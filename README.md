@@ -16,7 +16,7 @@ This repository is intentionally structured around feature parity with the Andro
 - Android image/Base64 embedded JSON config extraction, `;pk;` AES ECB configs, and `2423` AES CBC configs are supported.
 - Initial type=0 XML, type=1 JSON, and type=4 API source flow is present for home content, category list, detail, search, and quick search; Home/Search/FastSearch/Detail pages use this flow for real result and metadata rendering.
 - Detail page supports favorite toggle and writes a compact playback history snapshot before opening Play.
-- Push page supports manual direct URL playback through Play and Android-compatible outbound remote push to another TVBox (`POST /action do=push`, with `/api/updateUrl` fallback); local receiving server remains pending.
+- Push page supports manual direct URL playback through Play, Android-compatible outbound remote push to another TVBox (`POST /action do=push`, with `/api/updateUrl` fallback), and API-type `push_agent` detail entry for manually entered URLs; local receiving server remains pending.
 - Live page supports config `lives` direct channel groups plus M3U/TXT live subscriptions, group/channel/source switching, last channel persistence, and ArkUI `Video` playback.
 - Drive page supports Android-compatible storage drive records plus Local/Alist/WebDAV add/edit/delete, folder browsing, persisted sort mode, video file detection, direct playback through Play, and WebDAV Basic Authorization snapshots in `VodInfo.playerCfg`.
 - Apps page now supports persisted HarmonyOS app launch items, Bundle/Ability lookup when platform permissions allow it, direct `startAbility` launching, editing, and a delete-mode list removal fallback for the Android uninstall flow.

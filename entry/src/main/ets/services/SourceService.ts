@@ -71,21 +71,31 @@ export class SourceService {
   }
 
   async getDetail(source: SourceBean, vodId: string): Promise<VodInfo | undefined> {
-    this.assertSupportedApiSource(source);
-    const params: Record<string, string> = {
-      ac: source.type === 0 ? 'videolist' : 'detail',
-      ids: vodId
-    };
-    if (source.ext.length > 0) {
-      params['extend'] = await this.fixExtend(source.ext);
+    let detailSource = source;
+    let detailVodId = vodId;
+    const pushTarget = this.resolvePushTarget(vodId);
+    if (pushTarget.length > 0) {
+      const pushAgent = apiConfigService.state.sourceBeanList['push_agent'];
+      if (pushAgent !== undefined) {
+        detailSource = pushAgent;
+        detailVodId = pushTarget;
+      }
     }
-    const url = this.appendQuery(source.api, params);
-    if (source.type === 0) {
-      const result = this.parseXmlSearchResult(await this.httpClient.getText(url), source.key);
+    this.assertSupportedApiSource(detailSource);
+    const params: Record<string, string> = {
+      ac: detailSource.type === 0 ? 'videolist' : 'detail',
+      ids: detailVodId
+    };
+    if (detailSource.ext.length > 0) {
+      params['extend'] = await this.fixExtend(detailSource.ext);
+    }
+    const url = this.appendQuery(detailSource.api, params);
+    if (detailSource.type === 0) {
+      const result = this.parseXmlSearchResult(await this.httpClient.getText(url), detailSource.key);
       return result.list.length > 0 ? result.list[0] : undefined;
     }
     const root = await this.requestJsonRoot(url);
-    const list = this.parseVodList(root, source.key);
+    const list = this.parseVodList(root, detailSource.key);
     return list.length > 0 ? list[0] : undefined;
   }
 
@@ -207,6 +217,70 @@ export class SourceService {
     }
     if (source.api.length === 0) {
       throw new Error('源 API 为空');
+    }
+  }
+
+  private resolvePushTarget(vodId: string): string {
+    if (!vodId.startsWith('push://')) {
+      return '';
+    }
+    const payload = vodId.substring(7);
+    if (payload.startsWith('b64:')) {
+      return this.decodeBase64Url(payload.substring(4));
+    }
+    return this.decodeUrlComponent(payload);
+  }
+
+  private decodeUrlComponent(value: string): string {
+    try {
+      return decodeURIComponent(value.split('+').join(' '));
+    } catch (_error) {
+      return value;
+    }
+  }
+
+  private decodeBase64Url(value: string): string {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let normalized = value.split('-').join('+').split('_').join('/');
+    while (normalized.length % 4 !== 0) {
+      normalized += '=';
+    }
+    const bytes: number[] = [];
+    let buffer = 0;
+    let bits = 0;
+    for (let index = 0; index < normalized.length; index += 1) {
+      const char = normalized.charAt(index);
+      if (char === '=') {
+        break;
+      }
+      const valueIndex = alphabet.indexOf(char);
+      if (valueIndex < 0) {
+        continue;
+      }
+      buffer = (buffer << 6) | valueIndex;
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        bytes.push((buffer >> bits) & 0xff);
+      }
+    }
+    return this.decodeUtf8(bytes);
+  }
+
+  private decodeUtf8(bytes: number[]): string {
+    let escaped = '';
+    for (const byte of bytes) {
+      const hex = byte.toString(16);
+      escaped += `%${hex.length === 1 ? `0${hex}` : hex}`;
+    }
+    try {
+      return decodeURIComponent(escaped);
+    } catch (_error) {
+      let result = '';
+      for (const byte of bytes) {
+        result += String.fromCharCode(byte);
+      }
+      return result;
     }
   }
 

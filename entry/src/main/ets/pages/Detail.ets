@@ -40,6 +40,9 @@ struct Detail {
       }
     }
 
+    if (this.vodId.startsWith('push://') && apiConfigService.state.sourceBeanList['push_agent'] !== undefined) {
+      this.sourceKey = 'push_agent';
+    }
     const source = apiConfigService.state.sourceBeanList[this.sourceKey];
     if (source === undefined) {
       this.statusText = `找不到数据源：${this.sourceKey}`;

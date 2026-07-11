@@ -1,5 +1,6 @@
 import router from '@ohos.router';
 import { HawkConfig } from '../constants/HawkConfig';
+import { apiConfigService } from '../services/ApiConfigService';
 import { HttpClient } from '../services/HttpClient';
 import { settingsStore } from '../services/SettingsStore';
 
@@ -13,6 +14,8 @@ struct Push {
   @State remotePort: string = '9978';
   @State statusText: string = '输入 http/https/m3u8/mp4 等播放地址后可直接播放';
   @State sending: boolean = false;
+  @State hasPushAgent: boolean = false;
+  @State pushAgentText: string = 'push_agent 未加载';
 
   aboutToAppear(): void {
     this.initPage();
@@ -20,8 +23,28 @@ struct Push {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await this.ensureConfigLoaded();
     this.remoteAddr = await settingsStore.get<string>(HawkConfig.PUSH_TO_ADDR, '');
     this.remotePort = await settingsStore.get<string>(HawkConfig.PUSH_TO_PORT, '9978');
+  }
+
+  async ensureConfigLoaded(): Promise<void> {
+    if (Object.keys(apiConfigService.state.sourceBeanList).length === 0) {
+      try {
+        await apiConfigService.loadConfigFromSettings(true);
+      } catch (_error) {
+      }
+    }
+    const pushAgent = apiConfigService.state.sourceBeanList['push_agent'];
+    if (pushAgent === undefined) {
+      this.hasPushAgent = false;
+      this.pushAgentText = '当前配置没有 push_agent，手工输入地址只能直接播放或推送到远端。';
+      return;
+    }
+    this.hasPushAgent = pushAgent.type === 0 || pushAgent.type === 1 || pushAgent.type === 4;
+    this.pushAgentText = this.hasPushAgent
+      ? '当前配置包含 API 型 push_agent，可按 Android 详情入口解析手工输入地址。'
+      : `当前 push_agent 类型为 ${pushAgent.type}，Spider push_agent 详情解析仍待迁移。`;
   }
 
   openPlay(): void {
@@ -40,6 +63,25 @@ struct Push {
         playUrl: value,
         rawUrl: value,
         episodeName: '推送播放'
+      }
+    });
+  }
+
+  openPushAgentDetail(): void {
+    const value = this.url.trim();
+    if (value.length === 0) {
+      this.statusText = '播放地址不能为空';
+      return;
+    }
+    if (!this.hasPushAgent) {
+      this.statusText = this.pushAgentText;
+      return;
+    }
+    router.pushUrl({
+      url: 'pages/Detail',
+      params: {
+        sourceKey: 'push_agent',
+        vodId: value
       }
     });
   }
@@ -108,6 +150,11 @@ struct Push {
         Button('直接播放')
           .height(44)
           .onClick(() => this.openPlay())
+        Button('push_agent 详情')
+          .height(44)
+          .margin({ left: 12 })
+          .enabled(this.hasPushAgent)
+          .onClick(() => this.openPushAgentDetail())
         Button(this.sending ? '推送中' : '推送到远端')
           .height(44)
           .margin({ left: 12 })
@@ -134,10 +181,14 @@ struct Push {
       }
       .width('100%')
       .margin({ top: 18 })
-      Text('已迁移 Android 远端推送出口：优先 POST /action do=push，失败后兼容 GET /api/updateUrl。远程 HTTP server 接收推送、二维码入口和 push_agent 详情页仍待迁移。')
+      Text('已迁移 Android 远端推送出口：优先 POST /action do=push，失败后兼容 GET /api/updateUrl；配置存在 push_agent 时可按 Android 详情入口解析手工输入地址。远程 HTTP server 接收推送和二维码入口仍待迁移。')
         .fontSize(14)
         .fontColor('#93a4b8')
         .margin({ top: 24 })
+      Text(this.pushAgentText)
+        .fontSize(13)
+        .fontColor(this.hasPushAgent ? '#93c5fd' : '#fbbf24')
+        .margin({ top: 8 })
     }.width('100%').height('100%').padding(48).backgroundColor('#0b1020')
   }
 }
