@@ -12,6 +12,7 @@ import { vodDataStore } from '../services/VodDataStore';
 struct Drive {
   @State drives: StorageDrive[] = [];
   @State items: DriveFileItem[] = [];
+  @State allItems: DriveFileItem[] = [];
   @State selectedDrive: StorageDrive | null = null;
   @State currentPath: string = '/';
   @State driveTypeInput: number = DriveType.ALISTWEB;
@@ -24,6 +25,7 @@ struct Drive {
   @State statusText: string = '支持添加本地目录、Alist、WebDAV 并浏览播放视频文件';
   @State loading: boolean = false;
   @State sortType: number = 0;
+  @State searchKeyword: string = '';
 
   aboutToAppear(): void {
     this.initPage();
@@ -124,8 +126,10 @@ struct Drive {
 
   async openDrive(drive: StorageDrive): Promise<void> {
     this.selectedDrive = drive;
+    this.searchKeyword = '';
     if (drive.type !== DriveType.LOCAL && drive.type !== DriveType.ALISTWEB && drive.type !== DriveType.WEBDAV) {
       this.items = [];
+      this.allItems = [];
       this.statusText = '未知网盘类型';
       return;
     }
@@ -158,10 +162,12 @@ struct Drive {
       } else {
         list = await driveService.listAlist(this.selectedDrive, this.currentPath);
       }
-      this.items = driveService.sortItems(list, this.sortType);
-      this.statusText = `已加载 ${this.items.length} 项：${this.currentPath}`;
+      this.allItems = driveService.sortItems(list, this.sortType);
+      this.applySearchFilter();
+      this.statusText = `已加载 ${this.allItems.length} 项：${this.currentPath}`;
     } catch (error) {
       this.items = [];
+      this.allItems = [];
       this.statusText = `加载失败：${this.stringifyError(error)}`;
     } finally {
       this.loading = false;
@@ -171,7 +177,31 @@ struct Drive {
   async changeSortType(): Promise<void> {
     this.sortType = this.sortType >= 3 ? 0 : this.sortType + 1;
     await settingsStore.put(HawkConfig.STORAGE_DRIVE_SORT, this.sortType);
-    this.items = driveService.sortItems(this.items, this.sortType);
+    this.allItems = driveService.sortItems(this.allItems, this.sortType);
+    this.applySearchFilter();
+  }
+
+  applySearchFilter(): void {
+    const keyword = this.searchKeyword.trim().toLowerCase();
+    if (keyword.length === 0) {
+      this.items = this.allItems;
+      if (this.selectedDrive !== null) {
+        this.statusText = `已加载 ${this.allItems.length} 项：${this.currentPath}`;
+      }
+      return;
+    }
+    this.items = this.allItems.filter((item: DriveFileItem) => item.name.toLowerCase().includes(keyword));
+    this.statusText = `搜索 "${this.searchKeyword.trim()}"：${this.items.length}/${this.allItems.length} 项`;
+  }
+
+  updateSearchKeyword(value: string): void {
+    this.searchKeyword = value;
+    this.applySearchFilter();
+  }
+
+  clearSearchKeyword(): void {
+    this.searchKeyword = '';
+    this.applySearchFilter();
   }
 
   async openItem(item: DriveFileItem): Promise<void> {
@@ -246,6 +276,8 @@ struct Drive {
     if (parent === this.currentPath) {
       this.selectedDrive = null;
       this.items = [];
+      this.allItems = [];
+      this.searchKeyword = '';
       this.statusText = '已回到网盘列表';
       return;
     }
@@ -258,6 +290,8 @@ struct Drive {
     if (this.selectedDrive !== null && this.selectedDrive.id === drive.id) {
       this.selectedDrive = null;
       this.items = [];
+      this.allItems = [];
+      this.searchKeyword = '';
       this.statusText = '已删除当前网盘';
     }
     if (this.editDriveId === drive.id) {
@@ -453,7 +487,7 @@ struct Drive {
 
           if (this.selectedDrive === null) {
             if (this.drives.length === 0) {
-              Text('暂无网盘，先添加一个 Alist 或 WebDAV。')
+              Text('暂无网盘，先添加一个本地目录、Alist 或 WebDAV。')
                 .fontSize(16)
                 .fontColor('#d1d5db')
                 .margin({ top: 24 })
@@ -499,7 +533,24 @@ struct Drive {
               .layoutWeight(1)
               .margin({ top: 12 })
             }
-          } else if (this.loading) {
+          } else {
+            Row() {
+              TextInput({ text: this.searchKeyword, placeholder: '搜索当前目录文件名' })
+                .height(40)
+                .fontSize(14)
+                .layoutWeight(1)
+                .onChange((value: string) => this.updateSearchKeyword(value))
+              Button('清空')
+                .height(40)
+                .margin({ left: 10 })
+                .enabled(this.searchKeyword.trim().length > 0)
+                .onClick(() => this.clearSearchKeyword())
+            }
+            .width('100%')
+            .margin({ top: 12 })
+          }
+
+          if (this.selectedDrive !== null && this.loading) {
             Column() {
               LoadingProgress().width(48).height(48).color('#60a5fa')
               Text('加载中...')
@@ -509,12 +560,12 @@ struct Drive {
             }
             .layoutWeight(1)
             .justifyContent(FlexAlign.Center)
-          } else if (this.items.length === 0) {
-            Text('当前目录为空')
+          } else if (this.selectedDrive !== null && this.items.length === 0) {
+            Text(this.allItems.length > 0 ? '没有匹配项' : '当前目录为空')
               .fontSize(16)
               .fontColor('#d1d5db')
               .margin({ top: 24 })
-          } else {
+          } else if (this.selectedDrive !== null) {
             List() {
               ForEach(this.items, (item: DriveFileItem) => {
                 ListItem() {

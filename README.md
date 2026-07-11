@@ -18,7 +18,7 @@ This repository is intentionally structured around feature parity with the Andro
 - Detail page supports favorite toggle and writes a compact playback history snapshot before opening Play.
 - Push page supports manual direct URL playback through Play, Android-compatible outbound remote push to another TVBox (`POST /action do=push`, with `/api/updateUrl` fallback), and API-type `push_agent` detail entry for manually entered URLs; local receiving server remains pending.
 - Live page supports config `lives` direct channel groups plus M3U/TXT live subscriptions, group/channel/source switching, last channel persistence, and ArkUI `Video` playback.
-- Drive page supports Android-compatible storage drive records plus Local/Alist/WebDAV add/edit/delete, folder browsing, persisted sort mode, video file detection, direct playback through Play, and WebDAV Basic Authorization snapshots in `VodInfo.playerCfg`.
+- Drive page supports Android-compatible storage drive records plus Local/Alist/WebDAV add/edit/delete, folder browsing, current-directory filename search, persisted sort mode, video file detection, direct playback through Play, and WebDAV Basic Authorization snapshots in `VodInfo.playerCfg`.
 - Apps page now supports persisted HarmonyOS app launch items, Bundle/Ability lookup when platform permissions allow it, direct `startAbility` launching, editing, and a delete-mode list removal fallback for the Android uninstall flow.
 - Play page now uses ArkUI `Video` for playback, pause/resume, seeking, previous/next episode within the current group, resume-position restore, playback-history progress persistence, current-group history restoration, `playerCfg` header snapshot preservation, and an initial Android-style JSON/type=4 parse switching flow.
 
