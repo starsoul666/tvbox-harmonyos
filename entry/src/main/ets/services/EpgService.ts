@@ -7,6 +7,9 @@ export interface EpgProgram {
   end: string;
   index: number;
   isCurrent: boolean;
+  isFuture: boolean;
+  playSeekStart: string;
+  playSeekEnd: string;
 }
 
 export interface EpgLoadResult {
@@ -27,6 +30,7 @@ export class EpgService {
     const rows = asArray(root['epg_data']);
     const programs: EpgProgram[] = [];
     const currentMinutes = dateOffset === 0 ? this.currentMinutes() : -1;
+    const nowTime = Date.now();
     for (let i = 0; i < rows.length; i++) {
       const row = asRecord(rows[i]);
       const title = safeString(row, 'title', '未知节目').trim();
@@ -35,12 +39,16 @@ export class EpgService {
       if (start.length === 0 && end.length === 0 && title.length === 0) {
         continue;
       }
+      const startTime = this.programTimeMillis(dateText, start, 0);
       programs.push({
         title,
         start,
         end,
         index: programs.length,
-        isCurrent: currentMinutes >= 0 && this.isCurrentProgram(start, end, currentMinutes)
+        isCurrent: currentMinutes >= 0 && this.isCurrentProgram(start, end, currentMinutes),
+        isFuture: startTime > 0 && nowTime < startTime,
+        playSeekStart: this.playSeekTime(dateText, start),
+        playSeekEnd: this.playSeekTime(dateText, end)
       });
     }
     return { dateText, requestUrl, programs };
@@ -98,6 +106,43 @@ export class EpgService {
       return -1;
     }
     return hour * 60 + minute;
+  }
+
+  private programTimeMillis(dateText: string, timeText: string, dayOffset: number): number {
+    const dateParts = dateText.split('-');
+    const timeParts = timeText.split(':');
+    if (dateParts.length < 3 || timeParts.length < 2) {
+      return -1;
+    }
+    const year = Number(dateParts[0]);
+    const month = Number(dateParts[1]);
+    const day = Number(dateParts[2]);
+    const hour = Number(timeParts[0]);
+    const minute = Number(timeParts[1]);
+    if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day) ||
+      Number.isNaN(hour) || Number.isNaN(minute)) {
+      return -1;
+    }
+    const date = new Date(year, month - 1, day + dayOffset, hour, minute, 0, 0);
+    return date.getTime();
+  }
+
+  private playSeekTime(dateText: string, timeText: string): string {
+    const dateParts = dateText.split('-');
+    const timeParts = timeText.split(':');
+    if (dateParts.length < 3 || timeParts.length < 2) {
+      return '';
+    }
+    const year = Number(dateParts[0]);
+    const month = Number(dateParts[1]);
+    const day = Number(dateParts[2]);
+    const hour = Number(timeParts[0]);
+    const minute = Number(timeParts[1]);
+    if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day) ||
+      Number.isNaN(hour) || Number.isNaN(minute)) {
+      return '';
+    }
+    return `${year}${this.twoDigits(month)}${this.twoDigits(day)}${this.twoDigits(hour)}${this.twoDigits(minute)}30`;
   }
 }
 

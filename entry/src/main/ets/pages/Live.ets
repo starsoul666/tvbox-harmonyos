@@ -41,6 +41,9 @@ struct Live {
   @State liveCrossGroup: boolean = false;
   @State channelNumberInput: string = '';
   @State currentLogoUrl: string = '';
+  @State timeShiftProgramIndex: number = -1;
+  @State timeShiftDateText: string = '';
+  @State timeShiftLabel: string = '';
 
   aboutToAppear(): void {
     this.initPage();
@@ -235,9 +238,14 @@ struct Live {
     this.sourceName = this.getSourceLabel(channel, this.selectedSourceIndex);
     const epgInfo = epgAliasService.getEpgInfo(channel.channelName);
     this.currentLogoUrl = epgInfo === undefined ? '' : epgInfo.logo;
-    this.playUrl = channel.sourceUrls[this.selectedSourceIndex];
+    const sourceUrl = channel.sourceUrls[this.selectedSourceIndex];
+    channel.includeBack = this.isTimeShiftSource(sourceUrl);
+    this.timeShiftProgramIndex = -1;
+    this.timeShiftDateText = '';
+    this.timeShiftLabel = '';
+    this.playUrl = sourceUrl;
     this.errorText = '';
-    this.statusText = `${this.groupName} / ${this.channelName} / ${this.sourceName}`;
+    this.statusText = this.currentPlayStatus();
     this.isPlaying = true;
     if (saveSelection) {
       await settingsStore.put(HawkConfig.LIVE_CHANNEL_GROUP, this.groupName);
@@ -278,6 +286,44 @@ struct Live {
       return epgInfo.epgId;
     }
     return channel.channelName;
+  }
+
+  isTimeShiftSource(url: string): boolean {
+    return url.includes('PLTV/8888');
+  }
+
+  async playEpgProgram(program: EpgProgram): Promise<void> {
+    const channel = this.getCurrentChannel();
+    if (channel === undefined || channel.sourceUrls.length === 0) {
+      return;
+    }
+    if (!channel.includeBack) {
+      this.statusText = '当前频道不支持回看';
+      return;
+    }
+    if (program.isFuture) {
+      this.statusText = '未来节目不能回看';
+      return;
+    }
+    if (program.playSeekStart.length === 0 || program.playSeekEnd.length === 0) {
+      this.statusText = 'EPG 时间格式不支持回看';
+      return;
+    }
+    const sourceUrl = channel.sourceUrls[this.selectedSourceIndex];
+    if (program.isCurrent) {
+      this.timeShiftProgramIndex = -1;
+      this.timeShiftDateText = '';
+      this.timeShiftLabel = '';
+      this.playUrl = sourceUrl;
+      this.statusText = `已切回直播：${program.title}`;
+    } else {
+      this.timeShiftProgramIndex = program.index;
+      this.timeShiftDateText = this.epgDateText;
+      this.timeShiftLabel = `回看：${program.title}`;
+      this.playUrl = `${sourceUrl}?playseek=${program.playSeekStart}-${program.playSeekEnd}`;
+      this.statusText = this.currentPlayStatus();
+    }
+    this.isPlaying = true;
   }
 
   async switchChannel(offset: number): Promise<void> {
@@ -477,8 +523,13 @@ struct Live {
     } else {
       this.controller.start();
       this.isPlaying = true;
-      this.statusText = `${this.groupName} / ${this.channelName} / ${this.sourceName}`;
+      this.statusText = this.currentPlayStatus();
     }
+  }
+
+  currentPlayStatus(): string {
+    const baseText = `${this.groupName} / ${this.channelName} / ${this.sourceName}`;
+    return this.timeShiftLabel.length === 0 ? baseText : `${baseText} / ${this.timeShiftLabel}`;
   }
 
   getSourceLabel(channel: LiveChannelItem, index: number): string {
@@ -519,6 +570,35 @@ struct Live {
     return num < 10 ? `00${num}` : num < 100 ? `0${num}` : `${num}`;
   }
 
+  currentChannelSupportsBack(): boolean {
+    const channel = this.getCurrentChannel();
+    return channel !== undefined && channel.includeBack;
+  }
+
+  epgProgramBadge(program: EpgProgram): string {
+    if (this.timeShiftProgramIndex === program.index && this.timeShiftDateText === this.epgDateText) {
+      return '回看中';
+    }
+    if (program.isCurrent) {
+      return '当前';
+    }
+    if (program.isFuture) {
+      return '未播';
+    }
+    return this.currentChannelSupportsBack() &&
+      program.playSeekStart.length > 0 &&
+      program.playSeekEnd.length > 0
+      ? '回看'
+      : '';
+  }
+
+  epgProgramBackground(program: EpgProgram): string {
+    if (this.timeShiftProgramIndex === program.index && this.timeShiftDateText === this.epgDateText) {
+      return '#064e3b';
+    }
+    return program.isCurrent ? '#3f2e08' : '#1f2937';
+  }
+
   stringifyError(error: unknown): string {
     if (error instanceof Error) {
       return error.message;
@@ -542,7 +622,7 @@ struct Live {
             .controls(false)
             .objectFit(ImageFit.Contain)
             .onPrepared(() => {
-              this.statusText = `${this.groupName} / ${this.channelName} / ${this.sourceName}`;
+              this.statusText = this.currentPlayStatus();
               this.isPlaying = true;
             })
             .onError(() => {
@@ -679,6 +759,15 @@ struct Live {
               .textOverflow({ overflow: TextOverflow.Ellipsis })
           }
 
+          if (this.currentChannelSupportsBack()) {
+            Text(this.timeShiftLabel.length > 0 ? this.timeShiftLabel : '当前频道支持 EPG 回看')
+              .fontSize(12)
+              .fontColor('#86efac')
+              .margin({ top: 8 })
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
+
           Column() {
             Row() {
               Text(this.epgStatus)
@@ -719,10 +808,10 @@ struct Live {
                         .layoutWeight(1)
                         .maxLines(1)
                         .textOverflow({ overflow: TextOverflow.Ellipsis })
-                      if (program.isCurrent) {
-                        Text('当前')
+                      if (this.epgProgramBadge(program).length > 0) {
+                        Text(this.epgProgramBadge(program))
                           .fontSize(12)
-                          .fontColor('#fbbf24')
+                          .fontColor(program.isFuture ? '#94a3b8' : '#fbbf24')
                           .margin({ left: 8 })
                       }
                     }
@@ -730,7 +819,10 @@ struct Live {
                     .padding({ left: 10, right: 10, top: 6, bottom: 6 })
                     .margin({ top: 6 })
                     .borderRadius(8)
-                    .backgroundColor(program.isCurrent ? '#3f2e08' : '#1f2937')
+                    .backgroundColor(this.epgProgramBackground(program))
+                    .onClick(() => {
+                      this.playEpgProgram(program);
+                    })
                   }, (program: EpgProgram) => `${this.epgDateText}-${program.index}`)
                 }
               }
