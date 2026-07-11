@@ -29,6 +29,11 @@ struct Live {
   @State epgPrograms: EpgProgram[] = [];
   @State epgStatus: string = 'EPG 未加载';
   @State epgLoading: boolean = false;
+  @State unlockedGroupNames: string[] = [];
+  @State showPasswordPanel: boolean = false;
+  @State pendingGroupIndex: number = -1;
+  @State groupPasswordInput: string = '';
+  @State groupPasswordError: string = '';
 
   aboutToAppear(): void {
     this.initPage();
@@ -129,10 +134,51 @@ struct Live {
     if (index < 0 || index >= this.groups.length) {
       return;
     }
+    const group = this.groups[index];
+    if (!this.isGroupUnlocked(group)) {
+      this.pendingGroupIndex = index;
+      this.groupPasswordInput = '';
+      this.groupPasswordError = '';
+      this.showPasswordPanel = true;
+      return;
+    }
+    await this.openGroupIndex(index);
+  }
+
+  async openGroupIndex(index: number): Promise<void> {
     this.selectedGroupIndex = index;
     this.selectedChannelIndex = 0;
     this.selectedSourceIndex = 0;
     await this.openSelectedChannel(true);
+  }
+
+  isGroupUnlocked(group: LiveChannelGroup): boolean {
+    if (group.groupPassword === undefined || group.groupPassword.length === 0) {
+      return true;
+    }
+    return this.unlockedGroupNames.includes(group.groupName);
+  }
+
+  async submitGroupPassword(): Promise<void> {
+    if (this.pendingGroupIndex < 0 || this.pendingGroupIndex >= this.groups.length) {
+      this.showPasswordPanel = false;
+      return;
+    }
+    const group = this.groups[this.pendingGroupIndex];
+    if (group.groupPassword === undefined || this.groupPasswordInput === group.groupPassword) {
+      this.unlockedGroupNames = this.unlockedGroupNames.concat([group.groupName]);
+      this.showPasswordPanel = false;
+      await this.openGroupIndex(this.pendingGroupIndex);
+      return;
+    }
+    this.groupPasswordError = '密码错误';
+  }
+
+  cancelGroupPassword(): void {
+    this.showPasswordPanel = false;
+    this.pendingGroupIndex = -1;
+    this.groupPasswordInput = '';
+    this.groupPasswordError = '';
   }
 
   async selectChannel(index: number): Promise<void> {
@@ -565,6 +611,53 @@ struct Live {
       .width('100%')
       .height(430)
       .backgroundColor('#99000000')
+
+      if (this.showPasswordPanel) {
+        Column() {
+          Text('请输入分组密码')
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(Color.White)
+          Text(this.pendingGroupIndex >= 0 && this.pendingGroupIndex < this.groups.length
+            ? this.groups[this.pendingGroupIndex].groupName
+            : '')
+            .fontSize(14)
+            .fontColor('#93a4b8')
+            .margin({ top: 8 })
+          TextInput({ text: this.groupPasswordInput, placeholder: '分组密码' })
+            .height(42)
+            .fontSize(15)
+            .margin({ top: 16 })
+            .onChange((value: string) => {
+              this.groupPasswordInput = value;
+              this.groupPasswordError = '';
+            })
+          if (this.groupPasswordError.length > 0) {
+            Text(this.groupPasswordError)
+              .fontSize(13)
+              .fontColor('#fca5a5')
+              .margin({ top: 8 })
+          }
+          Row() {
+            Button('取消')
+              .height(38)
+              .layoutWeight(1)
+              .backgroundColor('#374151')
+              .onClick(() => this.cancelGroupPassword())
+            Button('确认')
+              .height(38)
+              .layoutWeight(1)
+              .margin({ left: 10 })
+              .onClick(() => this.submitGroupPassword())
+          }
+          .width('100%')
+          .margin({ top: 16 })
+        }
+        .width(360)
+        .padding(22)
+        .backgroundColor('#111827')
+        .borderRadius(14)
+      }
     }
     .width('100%')
     .height('100%')
