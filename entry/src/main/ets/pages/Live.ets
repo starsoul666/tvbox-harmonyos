@@ -2,6 +2,7 @@ import router from '@ohos.router';
 import { HawkConfig } from '../constants/HawkConfig';
 import { LiveChannelGroup, LiveChannelItem } from '../models/TvBoxModels';
 import { apiConfigService } from '../services/ApiConfigService';
+import { EpgProgram, epgService } from '../services/EpgService';
 import { settingsStore } from '../services/SettingsStore';
 
 @Entry
@@ -23,6 +24,11 @@ struct Live {
   @State loading: boolean = false;
   @State liveUrl: string = '';
   @State epgUrl: string = '';
+  @State epgDateOffset: number = 0;
+  @State epgDateText: string = '';
+  @State epgPrograms: EpgProgram[] = [];
+  @State epgStatus: string = 'EPG 未加载';
+  @State epgLoading: boolean = false;
 
   aboutToAppear(): void {
     this.initPage();
@@ -42,6 +48,9 @@ struct Live {
       this.epgUrl = await settingsStore.get<string>(HawkConfig.EPG_URL, '');
     } else if ((await settingsStore.get<string>(HawkConfig.EPG_URL, '')).length === 0) {
       await settingsStore.put(HawkConfig.EPG_URL, this.epgUrl);
+    }
+    if (this.epgUrl.length === 0) {
+      this.epgUrl = epgService.defaultEpgUrl;
     }
 
     this.groups = apiConfigService.state.liveChannelGroupList;
@@ -172,6 +181,37 @@ struct Live {
       await settingsStore.put(HawkConfig.LIVE_CHANNEL_GROUP, this.groupName);
       await settingsStore.put(HawkConfig.LIVE_CHANNEL, this.channelName);
     }
+    await this.loadCurrentEpg(0);
+  }
+
+  async loadCurrentEpg(dateOffset: number = this.epgDateOffset): Promise<void> {
+    const channel = this.getCurrentChannel();
+    if (channel === undefined) {
+      this.epgPrograms = [];
+      this.epgStatus = 'EPG 无可用频道';
+      return;
+    }
+    this.epgDateOffset = dateOffset;
+    this.epgLoading = true;
+    this.epgStatus = '正在加载 EPG';
+    try {
+      const result = await epgService.loadPrograms(this.epgUrl, this.epgChannelName(channel), dateOffset);
+      this.epgDateText = result.dateText;
+      this.epgPrograms = result.programs;
+      this.epgStatus = result.programs.length > 0 ? `EPG ${result.dateText}，${result.programs.length} 条` : `EPG ${result.dateText} 暂无节目`;
+    } catch (error) {
+      this.epgPrograms = [];
+      this.epgStatus = `EPG 加载失败：${this.stringifyError(error)}`;
+    } finally {
+      this.epgLoading = false;
+    }
+  }
+
+  epgChannelName(channel: LiveChannelItem): string {
+    if (channel.epgNames.length > 0 && channel.epgNames[0].length > 0) {
+      return channel.epgNames[0];
+    }
+    return channel.channelName;
   }
 
   async switchChannel(offset: number): Promise<void> {
@@ -367,6 +407,68 @@ struct Live {
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
           }
+
+          Column() {
+            Row() {
+              Text(this.epgStatus)
+                .fontSize(14)
+                .fontColor(this.epgStatus.startsWith('EPG 加载失败') ? '#fca5a5' : '#cbd5e1')
+                .layoutWeight(1)
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+              Button('前一天')
+                .height(34)
+                .enabled(!this.epgLoading)
+                .onClick(() => this.loadCurrentEpg(this.epgDateOffset - 1))
+              Button('今天')
+                .height(34)
+                .margin({ left: 8 })
+                .enabled(!this.epgLoading)
+                .onClick(() => this.loadCurrentEpg(0))
+              Button('后一天')
+                .height(34)
+                .margin({ left: 8 })
+                .enabled(!this.epgLoading)
+                .onClick(() => this.loadCurrentEpg(this.epgDateOffset + 1))
+            }
+            .width('100%')
+
+            if (this.epgPrograms.length > 0) {
+              Scroll() {
+                Column() {
+                  ForEach(this.epgPrograms, (program: EpgProgram) => {
+                    Row() {
+                      Text(`${program.start}-${program.end}`)
+                        .fontSize(12)
+                        .fontColor(program.isCurrent ? '#fbbf24' : '#93a4b8')
+                        .width(92)
+                      Text(program.title)
+                        .fontSize(13)
+                        .fontColor(program.isCurrent ? '#fbbf24' : Color.White)
+                        .layoutWeight(1)
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      if (program.isCurrent) {
+                        Text('当前')
+                          .fontSize(12)
+                          .fontColor('#fbbf24')
+                          .margin({ left: 8 })
+                      }
+                    }
+                    .width('100%')
+                    .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                    .margin({ top: 6 })
+                    .borderRadius(8)
+                    .backgroundColor(program.isCurrent ? '#3f2e08' : '#1f2937')
+                  }, (program: EpgProgram) => `${this.epgDateText}-${program.index}`)
+                }
+              }
+              .height(112)
+              .margin({ top: 8 })
+            }
+          }
+          .width('100%')
+          .margin({ top: 14 })
         }
         .layoutWeight(1)
         .padding({ left: 44, right: 24, top: 28, bottom: 28 })
@@ -461,7 +563,7 @@ struct Live {
         .padding({ left: 16, right: 44, top: 28, bottom: 28 })
       }
       .width('100%')
-      .height(330)
+      .height(430)
       .backgroundColor('#99000000')
     }
     .width('100%')

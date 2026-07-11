@@ -166,6 +166,14 @@ rg -n "Record<string, Object>|Object\[\]|\(item: Object\)|replaceAll|padStart|TO
 
 Result: no matches.
 
+Static scan after adding Live EPG program lookup:
+
+```bash
+rg -n "Record<string, Object>|Object\[\]|\(item: Object\)|replaceAll|padStart|TODO|FIXME|Number\.parseInt|console\.log|implicitAny|any" entry/src/main/ets README.md docs/android-parity.md
+```
+
+Result: no matches.
+
 Re-run after adding initial Live page playback, subscription parsing, and live/EPG settings still fails at the local SDK layer before ArkTS compilation:
 
 ```text
@@ -228,6 +236,14 @@ Re-run after adding Drive current-directory filename search still fails at the s
 > hvigor ERROR: 00303168 Configuration Error
 Error Message: SDK component missing.
 > hvigor ERROR: BUILD FAILED in 63 ms
+```
+
+Re-run after adding Live EPG program lookup still fails at the same local SDK layer before ArkTS compilation:
+
+```text
+> hvigor ERROR: 00303168 Configuration Error
+Error Message: SDK component missing.
+> hvigor ERROR: BUILD FAILED in 60 ms
 ```
 
 ## Current conclusion
