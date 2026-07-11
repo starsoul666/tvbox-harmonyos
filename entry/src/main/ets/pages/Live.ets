@@ -1,4 +1,5 @@
 import router from '@ohos.router';
+import { KeyCode } from '@ohos.multimodalInput.keyCode';
 import { HawkConfig } from '../constants/HawkConfig';
 import { LiveChannelGroup, LiveChannelItem } from '../models/TvBoxModels';
 import { apiConfigService } from '../services/ApiConfigService';
@@ -10,6 +11,7 @@ import { settingsStore } from '../services/SettingsStore';
 @Component
 struct Live {
   private controller: VideoController = new VideoController();
+  private channelNumberJumpTimer: number = -1;
 
   @State groups: LiveChannelGroup[] = [];
   @State selectedGroupIndex: number = 0;
@@ -42,6 +44,10 @@ struct Live {
 
   aboutToAppear(): void {
     this.initPage();
+  }
+
+  aboutToDisappear(): void {
+    this.clearChannelNumberTimer();
   }
 
   async initPage(): Promise<void> {
@@ -345,10 +351,14 @@ struct Live {
     await settingsStore.put(HawkConfig.LIVE_CROSS_GROUP, this.liveCrossGroup);
   }
 
-  async jumpToChannelNumber(): Promise<void> {
+  async jumpToChannelNumber(clearWhenMissing: boolean = false): Promise<void> {
+    this.clearChannelNumberTimer();
     const num = Number(this.channelNumberInput.trim());
     if (Number.isNaN(num) || num <= 0) {
       this.statusText = '请输入有效频道号';
+      if (clearWhenMissing) {
+        this.channelNumberInput = '';
+      }
       return;
     }
     for (let groupIndex = 0; groupIndex < this.groups.length; groupIndex++) {
@@ -368,6 +378,77 @@ struct Live {
       }
     }
     this.statusText = `未找到频道号：${this.channelNumberInput.trim()}`;
+    if (clearWhenMissing) {
+      this.channelNumberInput = '';
+    }
+  }
+
+  clearChannelNumberTimer(): void {
+    if (this.channelNumberJumpTimer >= 0) {
+      clearTimeout(this.channelNumberJumpTimer);
+      this.channelNumberJumpTimer = -1;
+    }
+  }
+
+  scheduleChannelNumberJump(): void {
+    this.clearChannelNumberTimer();
+    this.channelNumberJumpTimer = setTimeout(() => {
+      this.jumpToChannelNumber(true);
+    }, 2000);
+  }
+
+  appendRemoteDigit(digit: number): void {
+    this.channelNumberInput = `${this.channelNumberInput}${digit}`;
+    this.statusText = `输入频道号：${this.channelNumberInput}`;
+    this.scheduleChannelNumberJump();
+  }
+
+  remoteDigit(keyCode: number): number {
+    if (keyCode >= KeyCode.KEYCODE_0 && keyCode <= KeyCode.KEYCODE_9) {
+      return keyCode - KeyCode.KEYCODE_0;
+    }
+    if (keyCode >= KeyCode.KEYCODE_NUMPAD_0 && keyCode <= KeyCode.KEYCODE_NUMPAD_9) {
+      return keyCode - KeyCode.KEYCODE_NUMPAD_0;
+    }
+    return -1;
+  }
+
+  handleRemoteKey(event: KeyEvent): boolean {
+    if (event.type !== KeyType.Down) {
+      return false;
+    }
+    const digit = this.remoteDigit(event.keyCode);
+    if (digit >= 0) {
+      this.appendRemoteDigit(digit);
+      return true;
+    }
+    switch (event.keyCode) {
+      case KeyCode.KEYCODE_DPAD_UP:
+        this.switchChannel(this.liveChannelReverse ? 1 : -1);
+        return true;
+      case KeyCode.KEYCODE_DPAD_DOWN:
+        this.switchChannel(this.liveChannelReverse ? -1 : 1);
+        return true;
+      case KeyCode.KEYCODE_DPAD_RIGHT:
+        this.switchSource(1);
+        return true;
+      case KeyCode.KEYCODE_DPAD_LEFT:
+        this.switchSource(-1);
+        return true;
+      case KeyCode.KEYCODE_DPAD_CENTER:
+      case KeyCode.KEYCODE_ENTER:
+      case KeyCode.KEYCODE_NUMPAD_ENTER:
+        if (this.channelNumberInput.trim().length > 0) {
+          this.jumpToChannelNumber(true);
+          return true;
+        }
+        return false;
+      case KeyCode.KEYCODE_MEDIA_PLAY_PAUSE:
+        this.togglePlay();
+        return true;
+      default:
+        return false;
+    }
   }
 
   async switchSource(offset: number): Promise<void> {
@@ -805,5 +886,8 @@ struct Live {
     }
     .width('100%')
     .height('100%')
+    .focusable(true)
+    .defaultFocus(true)
+    .onKeyEvent((event: KeyEvent) => this.handleRemoteKey(event))
   }
 }
