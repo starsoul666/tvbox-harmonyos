@@ -36,6 +36,7 @@ struct Live {
   @State groupPasswordError: string = '';
   @State liveChannelReverse: boolean = false;
   @State liveCrossGroup: boolean = false;
+  @State channelNumberInput: string = '';
 
   aboutToAppear(): void {
     this.initPage();
@@ -335,6 +336,31 @@ struct Live {
     await settingsStore.put(HawkConfig.LIVE_CROSS_GROUP, this.liveCrossGroup);
   }
 
+  async jumpToChannelNumber(): Promise<void> {
+    const num = Number(this.channelNumberInput.trim());
+    if (Number.isNaN(num) || num <= 0) {
+      this.statusText = '请输入有效频道号';
+      return;
+    }
+    for (let groupIndex = 0; groupIndex < this.groups.length; groupIndex++) {
+      const group = this.groups[groupIndex];
+      if (!this.isGroupUnlocked(group)) {
+        continue;
+      }
+      for (let channelIndex = 0; channelIndex < group.liveChannels.length; channelIndex++) {
+        if (group.liveChannels[channelIndex].channelNum === num) {
+          this.selectedGroupIndex = groupIndex;
+          this.selectedChannelIndex = channelIndex;
+          this.selectedSourceIndex = 0;
+          this.channelNumberInput = '';
+          await this.openSelectedChannel(true);
+          return;
+        }
+      }
+    }
+    this.statusText = `未找到频道号：${this.channelNumberInput.trim()}`;
+  }
+
   async switchSource(offset: number): Promise<void> {
     const channel = this.getCurrentChannel();
     if (channel === undefined || channel.sourceUrls.length <= 1) {
@@ -530,6 +556,20 @@ struct Live {
               .margin({ left: 10 })
               .backgroundColor(this.liveCrossGroup ? '#2563eb' : '#374151')
               .onClick(() => this.toggleLiveCrossGroup())
+          }
+          .margin({ top: 10 })
+
+          Row() {
+            TextInput({ text: this.channelNumberInput, placeholder: '频道号' })
+              .height(34)
+              .fontSize(13)
+              .width(120)
+              .onChange((value: string) => this.channelNumberInput = value)
+            Button('跳转频道')
+              .height(34)
+              .margin({ left: 10 })
+              .enabled(this.channelNumberInput.trim().length > 0)
+              .onClick(() => this.jumpToChannelNumber())
           }
           .margin({ top: 10 })
 
