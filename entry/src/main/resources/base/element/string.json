@@ -1,0 +1,20 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "TVBox entry module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "TVBox"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "TVBox"
+    },
+    {
+      "name": "app_name",
+      "value": "TVBox"
+    }
+  ]
+}

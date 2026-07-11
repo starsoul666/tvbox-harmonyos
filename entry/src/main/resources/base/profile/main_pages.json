@@ -1,0 +1,16 @@
+{
+  "src": [
+    "pages/Home",
+    "pages/Detail",
+    "pages/Play",
+    "pages/Live",
+    "pages/Search",
+    "pages/FastSearch",
+    "pages/History",
+    "pages/Favorites",
+    "pages/Settings",
+    "pages/Push",
+    "pages/Drive",
+    "pages/Apps"
+  ]
+}
