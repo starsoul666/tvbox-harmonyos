@@ -5,6 +5,7 @@ import { LiveChannelGroup, LiveChannelItem } from '../models/TvBoxModels';
 import { apiConfigService } from '../services/ApiConfigService';
 import { epgAliasService } from '../services/EpgAliasService';
 import { EpgProgram, epgService } from '../services/EpgService';
+import { liveHeaderService } from '../services/LiveHeaderService';
 import { settingsStore } from '../services/SettingsStore';
 
 @Entry
@@ -44,6 +45,7 @@ struct Live {
   @State timeShiftProgramIndex: number = -1;
   @State timeShiftDateText: string = '';
   @State timeShiftLabel: string = '';
+  @State liveHeaderNotice: string = '';
 
   aboutToAppear(): void {
     this.initPage();
@@ -240,6 +242,7 @@ struct Live {
     this.currentLogoUrl = epgInfo === undefined ? '' : epgInfo.logo;
     const sourceUrl = channel.sourceUrls[this.selectedSourceIndex];
     channel.includeBack = this.isTimeShiftSource(sourceUrl);
+    this.updateLiveHeaderNotice(sourceUrl);
     this.timeShiftProgramIndex = -1;
     this.timeShiftDateText = '';
     this.timeShiftLabel = '';
@@ -290,6 +293,16 @@ struct Live {
 
   isTimeShiftSource(url: string): boolean {
     return url.includes('PLTV/8888');
+  }
+
+  updateLiveHeaderNotice(url: string): void {
+    const match = liveHeaderService.match(apiConfigService.state.livePlayHeaders, url);
+    const keys = Object.keys(match.headers);
+    if (match.matched) {
+      this.liveHeaderNotice = `已匹配直播头：${keys.join('、')}，当前 Video 暂未注入`;
+      return;
+    }
+    this.liveHeaderNotice = `默认直播 UA：${match.headers['User-Agent']}，当前 Video 暂未注入`;
   }
 
   async playEpgProgram(program: EpgProgram): Promise<void> {
@@ -763,6 +776,15 @@ struct Live {
             Text(this.timeShiftLabel.length > 0 ? this.timeShiftLabel : '当前频道支持 EPG 回看')
               .fontSize(12)
               .fontColor('#86efac')
+              .margin({ top: 8 })
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
+
+          if (this.liveHeaderNotice.length > 0) {
+            Text(this.liveHeaderNotice)
+              .fontSize(12)
+              .fontColor('#93a4b8')
               .margin({ top: 8 })
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
