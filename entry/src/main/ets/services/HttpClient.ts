@@ -32,4 +32,50 @@ export class HttpClient {
     const text = await this.getText(url, headers);
     return JSON.parse(text) as T;
   }
+
+  async postJsonText(url: string, body: Record<string, unknown>, headers?: HttpHeaders): Promise<string> {
+    const request = http.createHttp();
+    try {
+      const response = await request.request(url, {
+        method: http.RequestMethod.POST,
+        header: {
+          'User-Agent': HttpClient.userAgent,
+          'Accept': 'application/json, text/plain, */*',
+          'Content-Type': 'application/json;charset=UTF-8',
+          ...(headers || {})
+        },
+        extraData: JSON.stringify(body),
+        readTimeout: 30000,
+        connectTimeout: 10000
+      });
+      return response.result.toString();
+    } finally {
+      request.destroy();
+    }
+  }
+
+  async postJson<T>(url: string, body: Record<string, unknown>, headers?: HttpHeaders): Promise<T> {
+    const text = await this.postJsonText(url, body, headers);
+    return JSON.parse(text) as T;
+  }
+
+  async requestText(method: string, url: string, headers?: HttpHeaders, body: string = ''): Promise<string> {
+    const request = http.createHttp();
+    try {
+      const response = await request.request(url, {
+        method: method as http.RequestMethod,
+        header: {
+          'User-Agent': HttpClient.userAgent,
+          'Accept': '*/*',
+          ...(headers || {})
+        },
+        extraData: body,
+        readTimeout: 30000,
+        connectTimeout: 10000
+      });
+      return response.result.toString();
+    } finally {
+      request.destroy();
+    }
+  }
 }

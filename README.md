@@ -7,7 +7,7 @@ This repository is intentionally structured around feature parity with the Andro
 ## Current baseline
 
 - Stage model HarmonyOS app scaffold.
-- TV landscape-first routing and pages matching Android activities; Drive/Apps are still placeholder-level.
+- TV landscape-first routing and pages matching Android activities.
 - Core Android-compatible data models for source, parse, VOD, live, history, and settings.
 - Config parsing service for TVBox JSON config (`sites`, `parses`, `lives`, `flags`, `rules`, `ijk`, `ads`) with Android-compatible cache fallback.
 - Settings defaults mirrored from Android `App.initParams()`.
@@ -18,7 +18,9 @@ This repository is intentionally structured around feature parity with the Andro
 - Detail page supports favorite toggle and writes a compact playback history snapshot before opening Play.
 - Push page supports manual direct URL playback through Play; remote server push remains pending.
 - Live page supports config `lives` direct channel groups plus M3U/TXT live subscriptions, group/channel/source switching, last channel persistence, and ArkUI `Video` playback.
-- Play page now uses ArkUI `Video` for playback, pause/resume, seeking, previous/next episode within the current group, resume-position restore, playback-history progress persistence, current-group history restoration, and an initial Android-style JSON/type=4 parse switching flow.
+- Drive page supports Android-compatible storage drive records plus Alist/WebDAV add/edit/delete, folder browsing, persisted sort mode, video file detection, direct playback through Play, and WebDAV Basic Authorization snapshots in `VodInfo.playerCfg`.
+- Apps page now supports persisted HarmonyOS app launch items, Bundle/Ability lookup when platform permissions allow it, direct `startAbility` launching, editing, and a delete-mode list removal fallback for the Android uninstall flow.
+- Play page now uses ArkUI `Video` for playback, pause/resume, seeking, previous/next episode within the current group, resume-position restore, playback-history progress persistence, current-group history restoration, `playerCfg` header snapshot preservation, and an initial Android-style JSON/type=4 parse switching flow.
 
 ## Main Android references
 

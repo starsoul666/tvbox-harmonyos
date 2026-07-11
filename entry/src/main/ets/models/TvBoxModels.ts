@@ -143,6 +143,56 @@ export interface VodCollect {
   updateTime: number;
 }
 
+export const DriveType = {
+  LOCAL: 0,
+  WEBDAV: 1,
+  ALISTWEB: 2
+} as const;
+
+export type DriveTypeValue = typeof DriveType[keyof typeof DriveType];
+
+export interface StorageDrive {
+  id: number;
+  name: string;
+  type: number;
+  configJson: string;
+}
+
+export interface AlistDriveConfig {
+  url: string;
+  password: string;
+  initPath: string;
+}
+
+export interface WebDavDriveConfig {
+  url: string;
+  username: string;
+  password: string;
+  initPath: string;
+}
+
+export interface DriveFileItem {
+  name: string;
+  path: string;
+  isFile: boolean;
+  fileType: string;
+  lastModified: number;
+  fileUrl: string;
+  version: number;
+}
+
+export interface AppLaunchItem {
+  id: number;
+  name: string;
+  bundleName: string;
+  abilityName: string;
+  moduleName: string;
+  iconText: string;
+  systemApp: boolean;
+  userAdded: boolean;
+  updateTime: number;
+}
+
 export interface ParseRule {
   host?: string;
   hosts?: string[];

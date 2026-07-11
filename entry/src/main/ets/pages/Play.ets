@@ -4,6 +4,7 @@ import { apiConfigService } from '../services/ApiConfigService';
 import { PlaybackResolveResult, playbackService } from '../services/PlaybackService';
 import { settingsStore } from '../services/SettingsStore';
 import { vodDataStore } from '../services/VodDataStore';
+import { asArray, asRecord, safeString } from '../utils/JsonUtil';
 
 @Entry
 @Component
@@ -27,6 +28,7 @@ struct Play {
   @State errorText: string = '';
   @State parseStatus: string = '';
   @State parseWarning: string = '';
+  @State playerCfg: string = '';
   @State resolving: boolean = false;
   @State selectedParseName: string = '';
   @State parses: ParseBean[] = [];
@@ -57,6 +59,7 @@ struct Play {
     }
     this.playUrl = requestedPlayUrl;
     const requestedEpisodeName = params['episodeName'] === undefined ? '' : String(params['episodeName']);
+    this.playerCfg = params['playerCfg'] === undefined ? '' : String(params['playerCfg']);
     this.episodes = this.parseEpisodes(params['episodesJson']);
 
     const saved = this.sourceKey.length > 0 && this.vodId.length > 0
@@ -70,6 +73,9 @@ struct Play {
         : saved.playNote === undefined ? this.playFlag : saved.playNote;
       if (this.rawUrl.length === 0 && saved.rawUrl !== undefined) {
         this.rawUrl = saved.rawUrl;
+      }
+      if (this.playerCfg.length === 0 && saved.playerCfg !== undefined) {
+        this.playerCfg = saved.playerCfg;
       }
       if (this.episodes.length === 0 && saved.playFlag !== undefined && saved.seriesMap[saved.playFlag] !== undefined) {
         this.episodes = saved.seriesMap[saved.playFlag];
@@ -262,9 +268,10 @@ struct Play {
     this.parseStatus = result.status;
     this.parseWarning = result.warning === undefined ? '' : result.warning;
     if (result.headers !== undefined && Object.keys(result.headers).length > 0) {
-      this.parseWarning = this.parseWarning.length > 0
-        ? `${this.parseWarning}；解析返回 headers，当前 Video 暂未注入请求头`
-        : '解析返回 headers，当前 Video 暂未注入请求头';
+      this.appendParseWarning('解析返回 headers，当前 Video 暂未注入请求头');
+    }
+    if (this.hasPlayerCfgHeaders()) {
+      this.appendParseWarning('playerCfg 包含 headers，当前 Video 暂未注入请求头');
     }
     this.statusText = result.status;
     this.errorText = '';
@@ -285,6 +292,36 @@ struct Play {
     return String(error);
   }
 
+  appendParseWarning(message: string): void {
+    this.parseWarning = this.parseWarning.length > 0 ? `${this.parseWarning}；${message}` : message;
+  }
+
+  hasPlayerCfgHeaders(): boolean {
+    return Object.keys(this.playerCfgHeaders()).length > 0;
+  }
+
+  playerCfgHeaders(): Record<string, string> {
+    if (this.playerCfg.length === 0) {
+      return {};
+    }
+    try {
+      const root = asRecord(JSON.parse(this.playerCfg));
+      const rows = asArray(root['headers']);
+      const result: Record<string, string> = {};
+      for (const item of rows) {
+        const row = asRecord(item);
+        const name = safeString(row, 'name');
+        const value = safeString(row, 'value');
+        if (name.length > 0 && value.length > 0) {
+          result[name] = value;
+        }
+      }
+      return result;
+    } catch (_error) {
+      return {};
+    }
+  }
+
   savePlaybackRecord(): void {
     if (this.sourceKey.length === 0 || this.vodId.length === 0 || (this.playUrl.length === 0 && this.rawUrl.length === 0)) {
       return;
@@ -299,6 +336,9 @@ struct Play {
     base.rawUrl = this.rawUrl.length > 0 ? this.rawUrl : this.playUrl;
     base.last = this.playUrl.length > 0 ? this.playUrl : this.rawUrl;
     base.sourceKey = this.sourceKey;
+    if (this.playerCfg.length > 0) {
+      base.playerCfg = this.playerCfg;
+    }
     vodDataStore.insertVodRecord(this.sourceKey, base);
   }
 
