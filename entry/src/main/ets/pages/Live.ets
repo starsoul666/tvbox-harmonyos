@@ -34,6 +34,8 @@ struct Live {
   @State pendingGroupIndex: number = -1;
   @State groupPasswordInput: string = '';
   @State groupPasswordError: string = '';
+  @State liveChannelReverse: boolean = false;
+  @State liveCrossGroup: boolean = false;
 
   aboutToAppear(): void {
     this.initPage();
@@ -41,6 +43,8 @@ struct Live {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    this.liveChannelReverse = await settingsStore.get<boolean>(HawkConfig.LIVE_CHANNEL_REVERSE, false);
+    this.liveCrossGroup = await settingsStore.get<boolean>(HawkConfig.LIVE_CROSS_GROUP, false);
     await this.ensureConfigLoaded();
     this.liveUrl = apiConfigService.state.liveSourceUrl;
     this.epgUrl = apiConfigService.state.liveEpgUrl;
@@ -261,19 +265,74 @@ struct Live {
   }
 
   async switchChannel(offset: number): Promise<void> {
-    const channels = this.getChannels(this.selectedGroupIndex);
-    if (channels.length === 0) {
+    const next = this.resolveNextChannel(offset);
+    if (next === undefined) {
       return;
     }
-    let index = this.selectedChannelIndex + offset;
-    if (index < 0) {
-      index = channels.length - 1;
-    } else if (index >= channels.length) {
-      index = 0;
-    }
-    this.selectedChannelIndex = index;
+    this.selectedGroupIndex = next.groupIndex;
+    this.selectedChannelIndex = next.channelIndex;
     this.selectedSourceIndex = 0;
     await this.openSelectedChannel(true);
+  }
+
+  resolveNextChannel(offset: number): { groupIndex: number; channelIndex: number } | undefined {
+    const direction = offset >= 0 ? 1 : -1;
+    const channels = this.getChannels(this.selectedGroupIndex);
+    if (channels.length === 0) {
+      return undefined;
+    }
+    let channelIndex = this.selectedChannelIndex + direction;
+    if (channelIndex >= 0 && channelIndex < channels.length) {
+      return { groupIndex: this.selectedGroupIndex, channelIndex };
+    }
+    if (!this.liveCrossGroup) {
+      return {
+        groupIndex: this.selectedGroupIndex,
+        channelIndex: direction > 0 ? 0 : channels.length - 1
+      };
+    }
+    const groupIndex = this.findNextOpenGroup(this.selectedGroupIndex, direction);
+    const targetChannels = this.getChannels(groupIndex);
+    if (targetChannels.length === 0) {
+      return {
+        groupIndex: this.selectedGroupIndex,
+        channelIndex: direction > 0 ? 0 : channels.length - 1
+      };
+    }
+    return {
+      groupIndex,
+      channelIndex: direction > 0 ? 0 : targetChannels.length - 1
+    };
+  }
+
+  findNextOpenGroup(currentIndex: number, direction: number): number {
+    if (this.groups.length <= 1) {
+      return currentIndex;
+    }
+    let groupIndex = currentIndex;
+    for (let step = 0; step < this.groups.length - 1; step++) {
+      groupIndex += direction > 0 ? 1 : -1;
+      if (groupIndex >= this.groups.length) {
+        groupIndex = 0;
+      } else if (groupIndex < 0) {
+        groupIndex = this.groups.length - 1;
+      }
+      const group = this.groups[groupIndex];
+      if (this.isGroupUnlocked(group) && group.liveChannels.length > 0) {
+        return groupIndex;
+      }
+    }
+    return currentIndex;
+  }
+
+  async toggleLiveChannelReverse(): Promise<void> {
+    this.liveChannelReverse = !this.liveChannelReverse;
+    await settingsStore.put(HawkConfig.LIVE_CHANNEL_REVERSE, this.liveChannelReverse);
+  }
+
+  async toggleLiveCrossGroup(): Promise<void> {
+    this.liveCrossGroup = !this.liveCrossGroup;
+    await settingsStore.put(HawkConfig.LIVE_CROSS_GROUP, this.liveCrossGroup);
   }
 
   async switchSource(offset: number): Promise<void> {
@@ -321,6 +380,22 @@ struct Live {
   getCurrentSourceLabel(index: number): string {
     const channel = this.getCurrentChannel();
     return channel === undefined ? `源${index + 1}` : this.getSourceLabel(channel, index);
+  }
+
+  canSwitchChannel(): boolean {
+    if (this.getChannels(this.selectedGroupIndex).length > 1) {
+      return true;
+    }
+    if (!this.liveCrossGroup) {
+      return false;
+    }
+    let openGroupCount = 0;
+    for (const group of this.groups) {
+      if (this.isGroupUnlocked(group) && group.liveChannels.length > 0) {
+        openGroupCount++;
+      }
+    }
+    return openGroupCount > 1;
   }
 
   channelNumber(channel: LiveChannelItem, index: number): string {
@@ -424,16 +499,16 @@ struct Live {
             Button('上一台')
               .height(40)
               .margin({ left: 10 })
-              .enabled(this.getChannels(this.selectedGroupIndex).length > 1)
+              .enabled(this.canSwitchChannel())
               .onClick(() => {
-                this.switchChannel(-1);
+                this.switchChannel(this.liveChannelReverse ? 1 : -1);
               })
             Button('下一台')
               .height(40)
               .margin({ left: 10 })
-              .enabled(this.getChannels(this.selectedGroupIndex).length > 1)
+              .enabled(this.canSwitchChannel())
               .onClick(() => {
-                this.switchChannel(1);
+                this.switchChannel(this.liveChannelReverse ? -1 : 1);
               })
             Button('换源')
               .height(40)
@@ -444,6 +519,19 @@ struct Live {
               })
           }
           .margin({ top: 16 })
+
+          Row() {
+            Button(`反向换台：${this.liveChannelReverse ? '开' : '关'}`)
+              .height(34)
+              .backgroundColor(this.liveChannelReverse ? '#2563eb' : '#374151')
+              .onClick(() => this.toggleLiveChannelReverse())
+            Button(`跨组换台：${this.liveCrossGroup ? '开' : '关'}`)
+              .height(34)
+              .margin({ left: 10 })
+              .backgroundColor(this.liveCrossGroup ? '#2563eb' : '#374151')
+              .onClick(() => this.toggleLiveCrossGroup())
+          }
+          .margin({ top: 10 })
 
           if (this.epgUrl.length > 0) {
             Text(`EPG：${this.epgUrl}`)
