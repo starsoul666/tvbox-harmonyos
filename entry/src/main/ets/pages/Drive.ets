@@ -21,7 +21,7 @@ struct Drive {
   @State passwordInput: string = '';
   @State initPathInput: string = '/';
   @State editDriveId: number = 0;
-  @State statusText: string = '支持添加 Alist/WebDAV 网盘并浏览播放视频文件';
+  @State statusText: string = '支持添加本地目录、Alist、WebDAV 并浏览播放视频文件';
   @State loading: boolean = false;
   @State sortType: number = 0;
 
@@ -42,24 +42,29 @@ struct Drive {
   async saveDrive(): Promise<void> {
     const name = this.nameInput.trim();
     const url = this.urlInput.trim();
-    if (name.length === 0 || url.length === 0) {
-      this.statusText = '请填写名称和网盘地址';
+    if (name.length === 0 || (this.driveTypeInput !== DriveType.LOCAL && url.length === 0)) {
+      this.statusText = this.driveTypeInput === DriveType.LOCAL ? '请填写本地目录绝对路径' : '请填写名称和网盘地址';
       promptAction.showToast({ message: this.statusText });
       return;
     }
     const initPath = this.initPathInput.trim().length === 0 ? '/' : this.initPathInput.trim();
-    const configJson = this.driveTypeInput === DriveType.WEBDAV
-      ? JSON.stringify({
+    let configJson = '';
+    if (this.driveTypeInput === DriveType.LOCAL) {
+      configJson = JSON.stringify({ rootPath: name });
+    } else if (this.driveTypeInput === DriveType.WEBDAV) {
+      configJson = JSON.stringify({
         url,
         username: this.usernameInput,
         password: this.passwordInput,
         initPath
-      })
-      : JSON.stringify({
+      });
+    } else {
+      configJson = JSON.stringify({
         url,
         password: this.passwordInput,
         initPath
       });
+    }
     const saved = driveDataStore.save({
       id: this.editDriveId,
       name,
@@ -72,14 +77,21 @@ struct Drive {
   }
 
   editDrive(drive: StorageDrive): void {
-    if (drive.type !== DriveType.ALISTWEB && drive.type !== DriveType.WEBDAV) {
-      this.statusText = '当前仅支持编辑 Alist/WebDAV 网盘配置';
+    if (drive.type !== DriveType.LOCAL && drive.type !== DriveType.ALISTWEB && drive.type !== DriveType.WEBDAV) {
+      this.statusText = '当前仅支持编辑本地目录、Alist、WebDAV 配置';
       return;
     }
     this.editDriveId = drive.id;
     this.driveTypeInput = drive.type;
     this.nameInput = drive.name;
-    if (drive.type === DriveType.WEBDAV) {
+    if (drive.type === DriveType.LOCAL) {
+      const config = driveService.parseLocalConfig(drive);
+      this.nameInput = config.rootPath;
+      this.urlInput = '';
+      this.usernameInput = '';
+      this.passwordInput = '';
+      this.initPathInput = '/';
+    } else if (drive.type === DriveType.WEBDAV) {
       const config = driveService.parseWebDavConfig(drive);
       this.urlInput = config.url;
       this.usernameInput = config.username;
@@ -102,7 +114,7 @@ struct Drive {
 
   clearEditorFields(): void {
     this.editDriveId = 0;
-    this.driveTypeInput = DriveType.ALISTWEB;
+    this.driveTypeInput = DriveType.LOCAL;
     this.nameInput = '';
     this.urlInput = '';
     this.usernameInput = '';
@@ -112,14 +124,18 @@ struct Drive {
 
   async openDrive(drive: StorageDrive): Promise<void> {
     this.selectedDrive = drive;
-    if (drive.type !== DriveType.ALISTWEB && drive.type !== DriveType.WEBDAV) {
+    if (drive.type !== DriveType.LOCAL && drive.type !== DriveType.ALISTWEB && drive.type !== DriveType.WEBDAV) {
       this.items = [];
-      this.statusText = '当前仅已迁移 Alist/WebDAV 网盘，本地目录待继续补齐';
+      this.statusText = '未知网盘类型';
       return;
     }
-    this.currentPath = drive.type === DriveType.WEBDAV
-      ? driveService.parseWebDavConfig(drive).initPath
-      : driveService.parseAlistConfig(drive).initPath;
+    if (drive.type === DriveType.LOCAL) {
+      this.currentPath = driveService.parseLocalConfig(drive).rootPath;
+    } else if (drive.type === DriveType.WEBDAV) {
+      this.currentPath = driveService.parseWebDavConfig(drive).initPath;
+    } else {
+      this.currentPath = driveService.parseAlistConfig(drive).initPath;
+    }
     await this.loadCurrentPath();
   }
 
@@ -127,16 +143,21 @@ struct Drive {
     if (this.selectedDrive === null) {
       return;
     }
-    if (this.selectedDrive.type !== DriveType.ALISTWEB && this.selectedDrive.type !== DriveType.WEBDAV) {
-      this.statusText = '当前仅已迁移 Alist/WebDAV 网盘，本地目录待继续补齐';
+    if (this.selectedDrive.type !== DriveType.LOCAL && this.selectedDrive.type !== DriveType.ALISTWEB && this.selectedDrive.type !== DriveType.WEBDAV) {
+      this.statusText = '未知网盘类型';
       return;
     }
     this.loading = true;
     this.statusText = `正在加载：${this.currentPath}`;
     try {
-      const list = this.selectedDrive.type === DriveType.WEBDAV
-        ? await driveService.listWebDav(this.selectedDrive, this.currentPath)
-        : await driveService.listAlist(this.selectedDrive, this.currentPath);
+      let list: DriveFileItem[] = [];
+      if (this.selectedDrive.type === DriveType.LOCAL) {
+        list = await driveService.listLocal(this.selectedDrive, this.currentPath);
+      } else if (this.selectedDrive.type === DriveType.WEBDAV) {
+        list = await driveService.listWebDav(this.selectedDrive, this.currentPath);
+      } else {
+        list = await driveService.listAlist(this.selectedDrive, this.currentPath);
+      }
       this.items = driveService.sortItems(list, this.sortType);
       this.statusText = `已加载 ${this.items.length} 项：${this.currentPath}`;
     } catch (error) {
@@ -166,9 +187,14 @@ struct Drive {
       this.statusText = `非视频文件：${item.name}`;
       return;
     }
-    const fileUrl = this.selectedDrive.type === DriveType.WEBDAV
-      ? driveService.resolveWebDavFileUrl(this.selectedDrive, item)
-      : driveService.resolveAlistFileUrl(this.selectedDrive, item);
+    let fileUrl = '';
+    if (this.selectedDrive.type === DriveType.LOCAL) {
+      fileUrl = driveService.resolveLocalFileUrl(item.path);
+    } else if (this.selectedDrive.type === DriveType.WEBDAV) {
+      fileUrl = driveService.resolveWebDavFileUrl(this.selectedDrive, item);
+    } else {
+      fileUrl = driveService.resolveAlistFileUrl(this.selectedDrive, item);
+    }
     const vod: VodInfo = {
       id: fileUrl,
       name: item.name,
@@ -214,7 +240,9 @@ struct Drive {
     if (this.selectedDrive === null) {
       return;
     }
-    const parent = driveService.parentPath(this.currentPath);
+    const parent = this.selectedDrive.type === DriveType.LOCAL
+      ? driveService.parentLocalPath(this.currentPath, driveService.parseLocalConfig(this.selectedDrive).rootPath)
+      : driveService.parentPath(this.currentPath);
     if (parent === this.currentPath) {
       this.selectedDrive = null;
       this.items = [];
@@ -272,6 +300,9 @@ struct Drive {
   }
 
   driveTypeInputName(): string {
+    if (this.driveTypeInput === DriveType.LOCAL) {
+      return '本地目录';
+    }
     return this.driveTypeInput === DriveType.WEBDAV ? 'WebDAV' : 'Alist';
   }
 
@@ -322,9 +353,15 @@ struct Drive {
               .margin({ top: 6 })
           }
           Row() {
+            Button('本地')
+              .height(36)
+              .layoutWeight(1)
+              .backgroundColor(this.driveTypeInput === DriveType.LOCAL ? '#2563eb' : '#374151')
+              .onClick(() => this.driveTypeInput = DriveType.LOCAL)
             Button('Alist')
               .height(36)
               .layoutWeight(1)
+              .margin({ left: 10 })
               .backgroundColor(this.driveTypeInput === DriveType.ALISTWEB ? '#2563eb' : '#374151')
               .onClick(() => this.driveTypeInput = DriveType.ALISTWEB)
             Button('WebDAV')
@@ -335,41 +372,51 @@ struct Drive {
               .onClick(() => this.driveTypeInput = DriveType.WEBDAV)
           }
           .margin({ top: 12 })
-          TextInput({ text: this.nameInput, placeholder: '名称' })
+          TextInput({
+            text: this.nameInput,
+            placeholder: this.driveTypeInput === DriveType.LOCAL ? '本地目录绝对路径，例如 /data/storage/el2/base/files' : '名称'
+          })
             .height(44)
             .fontSize(15)
             .margin({ top: 12 })
             .onChange((value: string) => this.nameInput = value)
-          TextInput({
-            text: this.urlInput,
-            placeholder: this.driveTypeInput === DriveType.WEBDAV
-              ? 'WebDAV 地址，例如 https://example.com/dav'
-              : 'Alist 地址，例如 https://alist.example.com'
-          })
-            .height(44)
-            .fontSize(15)
-            .margin({ top: 10 })
-            .onChange((value: string) => this.urlInput = value)
-          if (this.driveTypeInput === DriveType.WEBDAV) {
-            TextInput({ text: this.usernameInput, placeholder: 'WebDAV 用户名，可为空' })
+          if (this.driveTypeInput !== DriveType.LOCAL) {
+            TextInput({
+              text: this.urlInput,
+              placeholder: this.driveTypeInput === DriveType.WEBDAV
+                ? 'WebDAV 地址，例如 https://example.com/dav'
+                : 'Alist 地址，例如 https://alist.example.com'
+            })
               .height(44)
               .fontSize(15)
               .margin({ top: 10 })
-              .onChange((value: string) => this.usernameInput = value)
+              .onChange((value: string) => this.urlInput = value)
+            if (this.driveTypeInput === DriveType.WEBDAV) {
+              TextInput({ text: this.usernameInput, placeholder: 'WebDAV 用户名，可为空' })
+                .height(44)
+                .fontSize(15)
+                .margin({ top: 10 })
+                .onChange((value: string) => this.usernameInput = value)
+            }
+            TextInput({
+              text: this.passwordInput,
+              placeholder: this.driveTypeInput === DriveType.WEBDAV ? 'WebDAV 密码，可为空' : '访问密码，可为空'
+            })
+              .height(44)
+              .fontSize(15)
+              .margin({ top: 10 })
+              .onChange((value: string) => this.passwordInput = value)
+            TextInput({ text: this.initPathInput, placeholder: '初始路径，默认 /' })
+              .height(44)
+              .fontSize(15)
+              .margin({ top: 10 })
+              .onChange((value: string) => this.initPathInput = value)
+          } else {
+            Text('HarmonyOS Next 受系统沙箱限制，普通应用通常只能读取授权目录或应用可访问目录；这里先提供 Android StorageDrive 兼容的本地路径记录与浏览。')
+              .fontSize(12)
+              .fontColor('#93a4b8')
+              .margin({ top: 10 })
           }
-          TextInput({
-            text: this.passwordInput,
-            placeholder: this.driveTypeInput === DriveType.WEBDAV ? 'WebDAV 密码，可为空' : '访问密码，可为空'
-          })
-            .height(44)
-            .fontSize(15)
-            .margin({ top: 10 })
-            .onChange((value: string) => this.passwordInput = value)
-          TextInput({ text: this.initPathInput, placeholder: '初始路径，默认 /' })
-            .height(44)
-            .fontSize(15)
-            .margin({ top: 10 })
-            .onChange((value: string) => this.initPathInput = value)
           Row() {
             Button(this.editDriveId > 0 ? '保存修改' : '保存并打开')
               .height(42)

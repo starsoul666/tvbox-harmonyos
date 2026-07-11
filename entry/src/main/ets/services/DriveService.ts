@@ -1,5 +1,6 @@
+import fs from '@ohos.file.fs';
 import util from '@ohos.util';
-import { AlistDriveConfig, DriveFileItem, StorageDrive, WebDavDriveConfig } from '../models/TvBoxModels';
+import { AlistDriveConfig, DriveFileItem, LocalDriveConfig, StorageDrive, WebDavDriveConfig } from '../models/TvBoxModels';
 import { asArray, asRecord, safeString } from '../utils/JsonUtil';
 import { HttpClient, HttpHeaders } from './HttpClient';
 
@@ -35,6 +36,66 @@ export class DriveService {
     } catch (_error) {
       return { url: '', username: '', password: '', initPath: '/' };
     }
+  }
+
+  parseLocalConfig(drive: StorageDrive): LocalDriveConfig {
+    try {
+      const root = asRecord(JSON.parse(drive.configJson));
+      const configured = safeString(root, 'rootPath');
+      if (configured.length > 0) {
+        return { rootPath: this.normalizeLocalPath(configured) };
+      }
+    } catch (_error) {
+    }
+    return { rootPath: this.normalizeLocalPath(drive.name) };
+  }
+
+  async listLocal(drive: StorageDrive, path: string): Promise<DriveFileItem[]> {
+    const rootPath = this.parseLocalConfig(drive).rootPath;
+    if (rootPath.length === 0) {
+      throw new Error('本地目录为空');
+    }
+    const targetPath = this.constrainLocalPath(path.length > 0 ? path : rootPath, rootPath);
+    let names: string[] = [];
+    try {
+      names = fs.listFileSync(targetPath);
+    } catch (_error) {
+      throw new Error(`无法读取本地目录：${targetPath}`);
+    }
+    const result: DriveFileItem[] = [];
+    for (const name of names) {
+      const childPath = this.joinLocalPath(targetPath, name);
+      try {
+        const stat = fs.statSync(childPath);
+        const isFile = stat.isFile();
+        const isDirectory = stat.isDirectory();
+        if (!isFile && !isDirectory) {
+          continue;
+        }
+        result.push(this.toDriveFile(name, targetPath, isFile, '', this.resolveLocalFileUrl(childPath), 0, childPath, stat.mtime * 1000));
+      } catch (_error) {
+      }
+    }
+    return result;
+  }
+
+  resolveLocalFileUrl(path: string): string {
+    const normalized = this.normalizeLocalPath(path);
+    if (normalized.startsWith('file://')) {
+      return normalized;
+    }
+    return encodeURI(`file://${normalized}`);
+  }
+
+  parentLocalPath(path: string, rootPath: string): string {
+    const safeRoot = this.normalizeLocalPath(rootPath);
+    const safePath = this.constrainLocalPath(path, safeRoot);
+    if (safePath === safeRoot) {
+      return safeRoot;
+    }
+    const index = safePath.lastIndexOf('/');
+    const parent = index <= 0 ? safeRoot : safePath.substring(0, index);
+    return this.constrainLocalPath(parent, safeRoot);
   }
 
   async listAlist(drive: StorageDrive, path: string): Promise<DriveFileItem[]> {
@@ -200,17 +261,26 @@ export class DriveService {
     return result;
   }
 
-  private toDriveFile(name: string, parentPath: string, isFile: boolean, modified: string, fileUrl: string, version: number): DriveFileItem {
+  private toDriveFile(
+    name: string,
+    parentPath: string,
+    isFile: boolean,
+    modified: string,
+    fileUrl: string,
+    version: number,
+    absolutePath: string = '',
+    modifiedTime: number = 0
+  ): DriveFileItem {
     const typeIndex = name.lastIndexOf('.');
     const fileType = isFile && typeIndex >= 0 && typeIndex < name.length - 1
       ? name.substring(typeIndex + 1).toLowerCase()
       : '';
     return {
       name,
-      path: this.joinPath(parentPath, name),
+      path: absolutePath.length > 0 ? absolutePath : this.joinPath(parentPath, name),
       isFile,
       fileType,
-      lastModified: this.parseDate(modified),
+      lastModified: modifiedTime > 0 ? modifiedTime : this.parseDate(modified),
       fileUrl,
       version
     };
@@ -231,6 +301,28 @@ export class DriveService {
     }
     const withHead = value.startsWith('/') ? value : `/${value}`;
     return withHead.length > 1 && withHead.endsWith('/') ? withHead.substring(0, withHead.length - 1) : withHead;
+  }
+
+  private normalizeLocalPath(path: string): string {
+    const value = path.trim();
+    if (value.length <= 1) {
+      return value;
+    }
+    return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
+  }
+
+  private constrainLocalPath(path: string, rootPath: string): string {
+    const safeRoot = this.normalizeLocalPath(rootPath);
+    const safePath = this.normalizeLocalPath(path);
+    if (safePath === safeRoot || safePath.startsWith(`${safeRoot}/`)) {
+      return safePath;
+    }
+    return safeRoot;
+  }
+
+  private joinLocalPath(parentPath: string, name: string): string {
+    const safeParent = this.normalizeLocalPath(parentPath);
+    return safeParent.endsWith('/') ? `${safeParent}${name}` : `${safeParent}/${name}`;
   }
 
   private getOrigin(url: string): string {

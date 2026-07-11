@@ -59,6 +59,27 @@ export class HttpClient {
     return JSON.parse(text) as T;
   }
 
+  async postFormText(url: string, body: Record<string, string>, headers?: HttpHeaders): Promise<string> {
+    const request = http.createHttp();
+    try {
+      const response = await request.request(url, {
+        method: http.RequestMethod.POST,
+        header: {
+          'User-Agent': HttpClient.userAgent,
+          'Accept': '*/*',
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+          ...(headers || {})
+        },
+        extraData: this.encodeForm(body),
+        readTimeout: 30000,
+        connectTimeout: 10000
+      });
+      return response.result.toString();
+    } finally {
+      request.destroy();
+    }
+  }
+
   async requestText(method: string, url: string, headers?: HttpHeaders, body: string = ''): Promise<string> {
     const request = http.createHttp();
     try {
@@ -77,5 +98,14 @@ export class HttpClient {
     } finally {
       request.destroy();
     }
+  }
+
+  private encodeForm(body: Record<string, string>): string {
+    const parts: string[] = [];
+    const keys = Object.keys(body);
+    for (const key of keys) {
+      parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(body[key])}`);
+    }
+    return parts.join('&');
   }
 }

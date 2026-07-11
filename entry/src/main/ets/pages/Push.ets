@@ -1,10 +1,28 @@
 import router from '@ohos.router';
+import { HawkConfig } from '../constants/HawkConfig';
+import { HttpClient } from '../services/HttpClient';
+import { settingsStore } from '../services/SettingsStore';
 
 @Entry
 @Component
 struct Push {
+  private readonly httpClient: HttpClient = new HttpClient();
+
   @State url: string = '';
+  @State remoteAddr: string = '';
+  @State remotePort: string = '9978';
   @State statusText: string = '输入 http/https/m3u8/mp4 等播放地址后可直接播放';
+  @State sending: boolean = false;
+
+  aboutToAppear(): void {
+    this.initPage();
+  }
+
+  async initPage(): Promise<void> {
+    await settingsStore.init(getContext(this));
+    this.remoteAddr = await settingsStore.get<string>(HawkConfig.PUSH_TO_ADDR, '');
+    this.remotePort = await settingsStore.get<string>(HawkConfig.PUSH_TO_PORT, '9978');
+  }
 
   openPlay(): void {
     const value = this.url.trim();
@@ -26,6 +44,57 @@ struct Push {
     });
   }
 
+  async pushToRemote(): Promise<void> {
+    const value = this.url.trim();
+    const addr = this.remoteAddr.trim();
+    const port = this.remotePort.trim().length === 0 ? '9978' : this.remotePort.trim();
+    if (value.length === 0) {
+      this.statusText = '播放地址不能为空';
+      return;
+    }
+    if (addr.length === 0) {
+      this.statusText = '远端 TVBox 地址不能为空';
+      return;
+    }
+    await settingsStore.put(HawkConfig.PUSH_TO_ADDR, addr);
+    await settingsStore.put(HawkConfig.PUSH_TO_PORT, port);
+    const baseUrl = this.remoteBaseUrl(addr, port);
+    this.sending = true;
+    this.statusText = `正在推送到 ${baseUrl}`;
+    try {
+      await this.httpClient.postFormText(`${baseUrl}/action`, {
+        do: 'push',
+        url: value
+      });
+      this.statusText = '已按 Android /action 协议推送';
+    } catch (firstError) {
+      try {
+        await this.httpClient.getText(`${baseUrl}/api/updateUrl?url=${encodeURIComponent(value)}`);
+        this.statusText = '已按 /api/updateUrl 兼容接口推送';
+      } catch (_secondError) {
+        this.statusText = `远端推送失败：${this.stringifyError(firstError)}`;
+      }
+    } finally {
+      this.sending = false;
+    }
+  }
+
+  remoteBaseUrl(addr: string, port: string): string {
+    const trimmed = addr.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed.endsWith('/') ? trimmed.substring(0, trimmed.length - 1) : trimmed;
+    }
+    return `http://${trimmed}:${port}`;
+  }
+
+  stringifyError(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    const text = JSON.stringify(error);
+    return text === undefined || text.length === 0 ? String(error) : text;
+  }
+
   build() {
     Column() {
       Text('< 返回').fontSize(18).fontColor(Color.White).alignSelf(ItemAlign.Start).onClick(() => router.back())
@@ -39,13 +108,33 @@ struct Push {
         Button('直接播放')
           .height(44)
           .onClick(() => this.openPlay())
+        Button(this.sending ? '推送中' : '推送到远端')
+          .height(44)
+          .margin({ left: 12 })
+          .enabled(!this.sending)
+          .onClick(() => this.pushToRemote())
         Text(this.statusText)
           .fontSize(15)
           .fontColor('#d1d5db')
           .margin({ left: 16 })
           .layoutWeight(1)
       }.width('100%').margin({ top: 18 }).alignItems(VerticalAlign.Center)
-      Text('远程 HTTP server 接收推送、二维码入口和 push_agent 详情页仍待迁移。')
+      Row() {
+        TextInput({ text: this.remoteAddr, placeholder: '远端 TVBox IP 或 http://host:port' })
+          .height(48)
+          .fontSize(16)
+          .layoutWeight(1)
+          .onChange((value: string) => this.remoteAddr = value)
+        TextInput({ text: this.remotePort, placeholder: '端口' })
+          .height(48)
+          .fontSize(16)
+          .width(130)
+          .margin({ left: 12 })
+          .onChange((value: string) => this.remotePort = value)
+      }
+      .width('100%')
+      .margin({ top: 18 })
+      Text('已迁移 Android 远端推送出口：优先 POST /action do=push，失败后兼容 GET /api/updateUrl。远程 HTTP server 接收推送、二维码入口和 push_agent 详情页仍待迁移。')
         .fontSize(14)
         .fontColor('#93a4b8')
         .margin({ top: 24 })

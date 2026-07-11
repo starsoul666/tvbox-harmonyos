@@ -171,6 +171,10 @@ export interface WebDavDriveConfig {
   initPath: string;
 }
 
+export interface LocalDriveConfig {
+  rootPath: string;
+}
+
 export interface DriveFileItem {
   name: string;
   path: string;
