@@ -198,6 +198,14 @@ rg -n "Record<string, Object>|Object\[\]|\(item: Object\)|replaceAll|padStart|TO
 
 Result: no matches.
 
+Static scan after adding Android `epg_data.json` logo/name aliases:
+
+```bash
+rg -n "Record<string, Object>|Object\[\]|\(item: Object\)|replaceAll|padStart|TODO|FIXME|Number\.parseInt|console\.log|implicitAny|any" entry/src/main/ets README.md docs/android-parity.md
+```
+
+Result: no matches.
+
 Re-run after adding initial Live page playback, subscription parsing, and live/EPG settings still fails at the local SDK layer before ArkTS compilation:
 
 ```text
@@ -292,6 +300,14 @@ Re-run after adding Live channel-number jump still fails at the same local SDK l
 > hvigor ERROR: 00303168 Configuration Error
 Error Message: SDK component missing.
 > hvigor ERROR: BUILD FAILED in 51 ms
+```
+
+Re-run after adding Android `epg_data.json` logo/name aliases still fails at the same local SDK layer before ArkTS compilation:
+
+```text
+> hvigor ERROR: 00303168 Configuration Error
+Error Message: SDK component missing.
+> hvigor ERROR: BUILD FAILED in 46 ms
 ```
 
 ## Current conclusion

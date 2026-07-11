@@ -2,6 +2,7 @@ import router from '@ohos.router';
 import { HawkConfig } from '../constants/HawkConfig';
 import { LiveChannelGroup, LiveChannelItem } from '../models/TvBoxModels';
 import { apiConfigService } from '../services/ApiConfigService';
+import { epgAliasService } from '../services/EpgAliasService';
 import { EpgProgram, epgService } from '../services/EpgService';
 import { settingsStore } from '../services/SettingsStore';
 
@@ -37,6 +38,7 @@ struct Live {
   @State liveChannelReverse: boolean = false;
   @State liveCrossGroup: boolean = false;
   @State channelNumberInput: string = '';
+  @State currentLogoUrl: string = '';
 
   aboutToAppear(): void {
     this.initPage();
@@ -44,6 +46,7 @@ struct Live {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await epgAliasService.init(getContext(this).resourceManager);
     this.liveChannelReverse = await settingsStore.get<boolean>(HawkConfig.LIVE_CHANNEL_REVERSE, false);
     this.liveCrossGroup = await settingsStore.get<boolean>(HawkConfig.LIVE_CROSS_GROUP, false);
     await this.ensureConfigLoaded();
@@ -224,6 +227,8 @@ struct Live {
     this.groupName = group.groupName;
     this.channelName = channel.channelName;
     this.sourceName = this.getSourceLabel(channel, this.selectedSourceIndex);
+    const epgInfo = epgAliasService.getEpgInfo(channel.channelName);
+    this.currentLogoUrl = epgInfo === undefined ? '' : epgInfo.logo;
     this.playUrl = channel.sourceUrls[this.selectedSourceIndex];
     this.errorText = '';
     this.statusText = `${this.groupName} / ${this.channelName} / ${this.sourceName}`;
@@ -261,6 +266,10 @@ struct Live {
   epgChannelName(channel: LiveChannelItem): string {
     if (channel.epgNames.length > 0 && channel.epgNames[0].length > 0) {
       return channel.epgNames[0];
+    }
+    const epgInfo = epgAliasService.getEpgInfo(channel.channelName);
+    if (epgInfo !== undefined && epgInfo.epgId.length > 0) {
+      return epgInfo.epgId;
     }
     return channel.channelName;
   }
@@ -488,6 +497,13 @@ struct Live {
               .fontSize(18)
               .fontColor(Color.White)
               .onClick(() => router.back())
+            if (this.currentLogoUrl.length > 0) {
+              Image(this.currentLogoUrl)
+                .width(54)
+                .height(54)
+                .objectFit(ImageFit.Contain)
+                .margin({ left: 18 })
+            }
             Column() {
               Text(this.channelName.length > 0 ? this.channelName : '直播')
                 .fontSize(24)
