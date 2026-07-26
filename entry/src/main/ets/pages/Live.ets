@@ -28,6 +28,7 @@ struct Live {
   private session: PlaybackSession = new PlaybackSession();
   private liveHeaders: Record<string, string> = {};
   private channelNumberJumpTimer: number = -1;
+  private clockTimer: number = -1;
 
   @State groups: LiveChannelGroup[] = [];
   @State selectedGroupIndex: number = 0;
@@ -61,6 +62,10 @@ struct Live {
   @State timeShiftDateText: string = '';
   @State timeShiftLabel: string = '';
   @State liveHeaderNotice: string = '';
+  @State liveSkipPassword: boolean = false;
+  @State liveShowTime: boolean = false;
+  @State liveShowNetSpeed: boolean = false;
+  @State clockText: string = '';
 
   aboutToAppear(): void {
     this.bindSession();
@@ -86,6 +91,7 @@ struct Live {
 
   aboutToDisappear(): void {
     this.session.release();
+    this.clearClock();
     this.clearChannelNumberTimer();
   }
 
@@ -94,6 +100,10 @@ struct Live {
     await epgAliasService.init(getContext(this).resourceManager);
     this.liveChannelReverse = await settingsStore.get<boolean>(HawkConfig.LIVE_CHANNEL_REVERSE, false);
     this.liveCrossGroup = await settingsStore.get<boolean>(HawkConfig.LIVE_CROSS_GROUP, false);
+    this.liveSkipPassword = await settingsStore.get<boolean>(HawkConfig.LIVE_SKIP_PASSWORD, false);
+    this.liveShowTime = await settingsStore.get<boolean>(HawkConfig.LIVE_SHOW_TIME, false);
+    this.liveShowNetSpeed = await settingsStore.get<boolean>(HawkConfig.LIVE_SHOW_NET_SPEED, false);
+    this.startClock();
     await this.ensureConfigLoaded();
     this.liveUrl = apiConfigService.state.liveSourceUrl;
     this.epgUrl = apiConfigService.state.liveEpgUrl;
@@ -205,11 +215,38 @@ struct Live {
     await this.openSelectedChannel(true);
   }
 
+  /** Android `LIVE_SKIP_PASSWORD` bypasses the prompt for password-protected groups. */
   isGroupUnlocked(group: LiveChannelGroup): boolean {
     if (group.groupPassword === undefined || group.groupPassword.length === 0) {
       return true;
     }
+    if (this.liveSkipPassword) {
+      return true;
+    }
     return this.unlockedGroupNames.includes(group.groupName);
+  }
+
+  startClock(): void {
+    if (!this.liveShowTime || this.clockTimer !== -1) {
+      return;
+    }
+    this.updateClock();
+    this.clockTimer = setInterval(() => this.updateClock(), 1000);
+  }
+
+  updateClock(): void {
+    const now = new Date();
+    const hh = now.getHours() < 10 ? `0${now.getHours()}` : `${now.getHours()}`;
+    const mm = now.getMinutes() < 10 ? `0${now.getMinutes()}` : `${now.getMinutes()}`;
+    const ss = now.getSeconds() < 10 ? `0${now.getSeconds()}` : `${now.getSeconds()}`;
+    this.clockText = `${hh}:${mm}:${ss}`;
+  }
+
+  clearClock(): void {
+    if (this.clockTimer !== -1) {
+      clearInterval(this.clockTimer);
+      this.clockTimer = -1;
+    }
   }
 
   async submitGroupPassword(): Promise<void> {
@@ -701,6 +738,13 @@ struct Live {
             }
             .layoutWeight(1)
             .margin({ left: 24 })
+            if (this.liveShowTime && this.clockText.length > 0) {
+              Text(this.clockText)
+                .fontSize(20)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(Color.White)
+                .margin({ left: 16 })
+            }
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)

@@ -1,6 +1,8 @@
 import router from '@ohos.router';
 import { HawkConfig } from '../constants/HawkConfig';
+import { HomeNumValues } from '../constants/AppDefaults';
 import { MovieSort, SourceBean, VodInfo } from '../models/TvBoxModels';
+import { vodDataStore } from '../services/VodDataStore';
 import { apiConfigService } from '../services/ApiConfigService';
 import { settingsStore } from '../services/SettingsStore';
 import { sourceService } from '../services/SourceService';
@@ -23,6 +25,8 @@ struct Home {
   @State sources: SourceBean[] = [];
   @State categories: MovieSort[] = [];
   @State recommendations: VodInfo[] = [];
+  @State homeRec: number = 1;
+  @State showSource: boolean = true;
   @State entries: HomeEntry[] = [
     { title: '直播', page: 'pages/Live', desc: 'LivePlayActivity' },
     { title: '搜索', page: 'pages/Search', desc: 'SearchActivity' },
@@ -41,6 +45,12 @@ struct Home {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    this.homeRec = await settingsStore.get<number>(HawkConfig.HOME_REC, 1);
+    this.showSource = await settingsStore.get<boolean>(HawkConfig.HOME_SHOW_SOURCE, true);
+    // Android `HOME_DEFAULT_SHOW`: jump straight into live playback on launch.
+    if (await settingsStore.get<boolean>(HawkConfig.HOME_DEFAULT_SHOW, false)) {
+      router.pushUrl({ url: 'pages/Live' });
+    }
     const apiUrl = await settingsStore.get<string>(HawkConfig.API_URL, '');
     if (apiUrl && Object.keys(apiConfigService.state.sourceBeanList).length === 0) {
       try {
@@ -90,8 +100,18 @@ struct Home {
     try {
       const content = await sourceService.getHomeContent(source);
       this.categories = content.classes;
-      this.recommendations = content.list;
-      this.contentStatus = `首页分类 ${content.classes.length} 个，推荐 ${content.list.length} 条`;
+      if (this.homeRec === 2) {
+        // Android `HOME_REC` 2 shows watch history instead of site recommendations.
+        const limitIndex = await settingsStore.get<number>(HawkConfig.HOME_NUM, 4);
+        const limit = limitIndex >= 0 && limitIndex < HomeNumValues.length
+          ? HomeNumValues[limitIndex]
+          : HomeNumValues[0];
+        this.recommendations = vodDataStore.getAllVodRecord(limit);
+        this.contentStatus = `首页分类 ${content.classes.length} 个，历史 ${this.recommendations.length} 条`;
+      } else {
+        this.recommendations = content.list;
+        this.contentStatus = `首页分类 ${content.classes.length} 个，推荐 ${content.list.length} 条`;
+      }
     } catch (error) {
       this.contentStatus = `首页内容加载失败：${errorMessage(error)}`;
     } finally {
@@ -188,7 +208,7 @@ struct Home {
       .columnsGap(18)
       .padding({ left: 48, right: 48 })
 
-      if (this.sources.length > 0) {
+      if (this.sources.length > 0 && this.showSource) {
         Column() {
           if (this.contentStatus.length > 0) {
             Row() {
