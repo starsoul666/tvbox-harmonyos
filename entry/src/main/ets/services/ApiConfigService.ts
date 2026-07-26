@@ -516,6 +516,19 @@ export class ApiConfigService {
     return parts.length > 1 ? parts[1] : '';
   }
 
+  /** Android `SettingActivity` cache-clear action. */
+  clearConfigCache(apiUrl: string): void {
+    const path = this.configCachePath(apiUrl);
+    if (path.length === 0) {
+      return;
+    }
+    try {
+      fs.unlinkSync(path);
+    } catch (_error) {
+      // Nothing cached is an acceptable outcome for a clear action.
+    }
+  }
+
   private readConfigCache(apiUrl: string): string {
     const path = this.configCachePath(apiUrl);
     if (!path) {
