@@ -5,7 +5,10 @@ import { LiveChannelGroup, LiveChannelItem } from '../models/TvBoxModels';
 import { apiConfigService } from '../services/ApiConfigService';
 import { epgAliasService } from '../services/EpgAliasService';
 import { EpgProgram, epgService } from '../services/EpgService';
-import { liveHeaderService } from '../services/LiveHeaderService';
+import { liveHeaderService, LiveHeaderMatch } from '../services/LiveHeaderService';
+import { PlayerSurface } from '../components/player/PlayerSurface';
+import { MediaSourceRequest } from '../domain/playback/PlaybackModels';
+import { PlaybackSession } from '../domain/playback/PlaybackSession';
 import { settingsStore } from '../services/SettingsStore';
 import { errorMessage } from '../utils/ErrorUtil';
 
@@ -22,7 +25,8 @@ class ChannelPosition {
 @Entry
 @Component
 struct Live {
-  private controller: VideoController = new VideoController();
+  private session: PlaybackSession = new PlaybackSession();
+  private liveHeaders: Record<string, string> = {};
   private channelNumberJumpTimer: number = -1;
 
   @State groups: LiveChannelGroup[] = [];
@@ -59,10 +63,29 @@ struct Live {
   @State liveHeaderNotice: string = '';
 
   aboutToAppear(): void {
+    this.bindSession();
     this.initPage();
   }
 
+  bindSession(): void {
+    this.session.onStateChange = (state: string) => {
+      if (state === 'playing') {
+        this.isPlaying = true;
+        this.errorText = '';
+        this.statusText = this.currentPlayStatus();
+      } else if (state === 'paused') {
+        this.isPlaying = false;
+      }
+    };
+    this.session.onError = (message: string) => {
+      this.errorText = `直播播放失败，请切换频道或线路：${message}`;
+      this.statusText = '播放失败';
+      this.isPlaying = false;
+    };
+  }
+
   aboutToDisappear(): void {
+    this.session.release();
     this.clearChannelNumberTimer();
   }
 
@@ -257,10 +280,9 @@ struct Live {
     this.timeShiftProgramIndex = -1;
     this.timeShiftDateText = '';
     this.timeShiftLabel = '';
-    this.playUrl = sourceUrl;
     this.errorText = '';
     this.statusText = this.currentPlayStatus();
-    this.isPlaying = true;
+    await this.startLivePlayback(sourceUrl);
     if (saveSelection) {
       await settingsStore.put(HawkConfig.LIVE_CHANNEL_GROUP, this.groupName);
       await settingsStore.put(HawkConfig.LIVE_CHANNEL, this.channelName);
@@ -306,14 +328,23 @@ struct Live {
     return url.includes('PLTV/8888');
   }
 
+  /** Android `livePlayHeaders` rules; headers are now really sent through AVPlayer. */
   updateLiveHeaderNotice(url: string): void {
-    const match = liveHeaderService.match(apiConfigService.state.livePlayHeaders, url);
+    const match: LiveHeaderMatch = liveHeaderService.match(apiConfigService.state.livePlayHeaders, url);
+    this.liveHeaders = match.headers;
     const keys = Object.keys(match.headers);
-    if (match.matched) {
-      this.liveHeaderNotice = `已匹配直播头：${keys.join('、')}，当前 Video 暂未注入`;
+    this.liveHeaderNotice = match.matched
+      ? `已匹配直播头：${keys.join('、')}`
+      : `默认直播 UA：${match.headers['User-Agent']}`;
+  }
+
+  async startLivePlayback(url: string): Promise<void> {
+    this.playUrl = url;
+    if (url.length === 0) {
       return;
     }
-    this.liveHeaderNotice = `默认直播 UA：${match.headers['User-Agent']}，当前 Video 暂未注入`;
+    await this.session.setSource(new MediaSourceRequest(url, this.liveHeaders, 0));
+    this.isPlaying = true;
   }
 
   async playEpgProgram(program: EpgProgram): Promise<void> {
@@ -338,16 +369,15 @@ struct Live {
       this.timeShiftProgramIndex = -1;
       this.timeShiftDateText = '';
       this.timeShiftLabel = '';
-      this.playUrl = sourceUrl;
       this.statusText = `已切回直播：${program.title}`;
+      await this.startLivePlayback(sourceUrl);
     } else {
       this.timeShiftProgramIndex = program.index;
       this.timeShiftDateText = this.epgDateText;
       this.timeShiftLabel = `回看：${program.title}`;
-      this.playUrl = `${sourceUrl}?playseek=${program.playSeekStart}-${program.playSeekEnd}`;
       this.statusText = this.currentPlayStatus();
+      await this.startLivePlayback(`${sourceUrl}?playseek=${program.playSeekStart}-${program.playSeekEnd}`);
     }
-    this.isPlaying = true;
   }
 
   async switchChannel(offset: number): Promise<void> {
@@ -532,11 +562,11 @@ struct Live {
       return;
     }
     if (this.isPlaying) {
-      this.controller.pause();
+      this.session.pause();
       this.isPlaying = false;
       this.statusText = '直播已暂停';
     } else {
-      this.controller.start();
+      this.session.play();
       this.isPlaying = true;
       this.statusText = this.currentPlayStatus();
     }
@@ -618,46 +648,28 @@ struct Live {
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
       Column() {
-        if (this.playUrl.length > 0) {
-          Video({
-            src: this.playUrl,
-            currentProgressRate: PlaybackSpeed.Speed_Forward_1_00_X,
-            controller: this.controller
-          })
-            .width('100%')
-            .height('100%')
-            .autoPlay(true)
-            .controls(false)
-            .objectFit(ImageFit.Contain)
-            .onPrepared(() => {
-              this.statusText = this.currentPlayStatus();
-              this.isPlaying = true;
-            })
-            .onError(() => {
-              this.errorText = '直播播放失败，请切换频道或线路';
-              this.statusText = '播放失败';
-              this.isPlaying = false;
-            })
-        } else {
-          Column() {
-            Text(this.loading ? '正在加载直播频道' : '无直播播放地址')
-              .fontSize(30)
-              .fontWeight(FontWeight.Bold)
-              .fontColor(Color.White)
-            Text(this.errorText.length > 0 ? this.errorText : '请确认配置中的 lives 或设置中的 LIVE_URL')
-              .fontSize(16)
-              .fontColor(this.errorText.length > 0 ? '#fca5a5' : '#cbd5e1')
-              .margin({ top: 12 })
-          }
-          .width('100%')
-          .height('100%')
-          .justifyContent(FlexAlign.Center)
-          .alignItems(HorizontalAlign.Center)
-        }
+        PlayerSurface({ session: this.session })
       }
       .width('100%')
       .height('100%')
       .backgroundColor(Color.Black)
+
+      if (this.playUrl.length === 0) {
+        Column() {
+          Text(this.loading ? '正在加载直播频道' : '无直播播放地址')
+            .fontSize(30)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(Color.White)
+          Text(this.errorText.length > 0 ? this.errorText : '请确认配置中的 lives 或设置中的 LIVE_URL')
+            .fontSize(16)
+            .fontColor(this.errorText.length > 0 ? '#fca5a5' : '#cbd5e1')
+            .margin({ top: 12 })
+        }
+        .width('100%')
+        .height('100%')
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+      }
 
       Row() {
         Column() {
