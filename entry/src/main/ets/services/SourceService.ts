@@ -182,11 +182,14 @@ export class SourceService {
     return this.parseSearchResult(root, source.key);
   }
 
-  async searchAll(keyword: string, quick: boolean = false): Promise<SourceSearchResult[]> {
+  async searchAll(keyword: string, quick: boolean = false, onlyKeys?: string[]): Promise<SourceSearchResult[]> {
     let sources = this.visibleSearchableSources(quick);
     if (sources.length === 0) {
       await apiConfigService.loadConfigFromSettings(true);
       sources = this.visibleSearchableSources(quick);
+    }
+    if (onlyKeys !== undefined && onlyKeys.length > 0) {
+      sources = sources.filter((source: SourceBean) => onlyKeys.includes(source.key));
     }
 
     const tasks = sources.map(async (source: SourceBean): Promise<SourceSearchResult> => {

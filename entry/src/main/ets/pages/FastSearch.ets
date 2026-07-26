@@ -21,6 +21,15 @@ struct FastSearch {
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
     this.refreshHistory();
+    const rawParams = router.getParams();
+    if (rawParams !== undefined) {
+      const params = rawParams as Record<string, string>;
+      const keyword = params['keyword'] === undefined ? '' : String(params['keyword']);
+      if (keyword.length > 0) {
+        this.keyword = keyword;
+        this.submitSearch();
+      }
+    }
   }
 
   refreshHistory(): void {
