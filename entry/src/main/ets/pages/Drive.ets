@@ -1,7 +1,8 @@
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import { HawkConfig } from '../constants/HawkConfig';
-import { DriveFileItem, DriveType, PlayerCfg, PlayerCfgHeader, StorageDrive, VodInfo } from '../models/TvBoxModels';
+import { DriveFileItem, DriveType, StorageDrive, VodInfo } from '../models/TvBoxModels';
+import { PlayerConfig } from '../domain/playback/PlayerConfig';
 import { driveDataStore } from '../services/DriveDataStore';
 import { driveService } from '../services/DriveService';
 import { settingsStore } from '../services/SettingsStore';
@@ -246,7 +247,10 @@ struct Drive {
       ? driveService.getWebDavAuthorization(this.selectedDrive)
       : '';
     if (authorization.length > 0) {
-      vod.playerCfg = JSON.stringify(new PlayerCfg([new PlayerCfgHeader('authorization', authorization)]));
+      // AVPlayer receives these headers through PlaybackSession, so WebDAV Basic auth works.
+      const config = new PlayerConfig();
+      config.headers = { 'Authorization': authorization };
+      vod.playerCfg = config.stringify();
     }
     vodDataStore.insertVodRecord('_drive', vod);
     router.pushUrl({
