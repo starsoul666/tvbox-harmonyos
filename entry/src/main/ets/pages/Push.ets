@@ -27,6 +27,13 @@ struct Push {
     await this.ensureConfigLoaded();
     this.remoteAddr = await settingsStore.get<string>(HawkConfig.PUSH_TO_ADDR, '');
     this.remotePort = await settingsStore.get<string>(HawkConfig.PUSH_TO_PORT, '9978');
+    const rawParams = router.getParams();
+    if (rawParams !== undefined) {
+      const params = rawParams as Record<string, string>;
+      if (params['url'] !== undefined) {
+        this.url = String(params['url']);
+      }
+    }
   }
 
   async ensureConfigLoaded(): Promise<void> {
