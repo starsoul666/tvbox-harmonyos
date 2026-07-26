@@ -99,6 +99,20 @@ struct Home {
     }
   }
 
+  openCategory(category: MovieSort): void {
+    const source = apiConfigService.state.homeSource;
+    if (source === undefined) {
+      return;
+    }
+    router.pushUrl({
+      url: 'pages/Category',
+      params: {
+        sourceKey: source.key,
+        typeId: category.sortId
+      }
+    });
+  }
+
   openVod(vod: VodInfo): void {
     const sourceKey = vod.sourceKey === undefined ? apiConfigService.state.homeSource?.key || '' : vod.sourceKey;
     if (sourceKey.length === 0 || vod.id.length === 0) {
@@ -204,6 +218,8 @@ struct Home {
                     .margin({ right: 10 })
                     .backgroundColor('#1f2937')
                     .borderRadius(16)
+                    .focusable(true)
+                    .onClick(() => this.openCategory(category))
                 }, (category: MovieSort) => category.sortId)
               }
             }

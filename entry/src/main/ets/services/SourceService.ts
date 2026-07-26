@@ -1,8 +1,19 @@
-import { MovieSort, SearchResult, SourceBean, SourceHomeContent, SourceSearchResult, VodInfo, VodSeries, VodSeriesFlag } from '../models/TvBoxModels';
-import { asArray, asRecord, safeNumber, safeString } from '../utils/JsonUtil';
+import { MovieSort, SearchResult, SortFilter, SortFilterValue, SourceBean, SourceHomeContent, SourceSearchResult, VodInfo, VodSeries, VodSeriesFlag } from '../models/TvBoxModels';
+import { asArray, asRecord, JsonNode, parseJson, safeNumber, safeString } from '../utils/JsonUtil';
+import { base64Encode } from '../utils/Base64Util';
 import { apiConfigService } from './ApiConfigService';
 import { HttpClient } from './HttpClient';
 import { errorMessage } from '../utils/ErrorUtil';
+
+class SeriesData {
+  flags: VodSeriesFlag[];
+  map: Record<string, VodSeries[]>;
+
+  constructor(flags: VodSeriesFlag[], map: Record<string, VodSeries[]>) {
+    this.flags = flags;
+    this.map = map;
+  }
+}
 
 export class SourceService {
   private readonly httpClient: HttpClient = new HttpClient();
@@ -25,48 +36,93 @@ export class SourceService {
     return this.parseJsonHomeContent(root, source.key);
   }
 
-  private parseJsonHomeContent(root: Record<string, unknown>, sourceKey: string): SourceHomeContent {
-    const classes = asArray(root['class']).map((item: unknown) => {
-      const obj = asRecord(item);
-      return {
-        sortId: safeString(obj, 'type_id', safeString(obj, 'id')).trim(),
-        sortName: safeString(obj, 'type_name', safeString(obj, 'name')).trim()
-      };
-    }).filter((item: { sortId: string; sortName: string }) => item.sortId.length > 0 && item.sortName.length > 0);
-
+  private parseJsonHomeContent(root: Record<string, JsonNode>, sourceKey: string): SourceHomeContent {
+    const filterMap: Record<string, SortFilter[]> = this.parseFilters(root['filters']);
+    const classes: MovieSort[] = [];
+    for (const item of asArray(root['class'])) {
+      const obj: Record<string, JsonNode> = asRecord(item);
+      const sortId = safeString(obj, 'type_id', safeString(obj, 'id')).trim();
+      const sortName = safeString(obj, 'type_name', safeString(obj, 'name')).trim();
+      if (sortId.length === 0 || sortName.length === 0) {
+        continue;
+      }
+      const filters: SortFilter[] = filterMap[sortId] === undefined ? [] : filterMap[sortId];
+      classes.push({ sortId, sortName, filters });
+    }
     return {
       classes,
-      filters: asRecord(root['filters']),
       list: this.parseVodList(root, sourceKey)
     };
   }
 
-  async getCategoryList(source: SourceBean, typeId: string, page: number): Promise<SearchResult> {
-    this.assertSupportedApiSource(source);
-    if (source.type === 0) {
-      const url = this.appendQuery(source.api, {
-        ac: 'videolist',
-        t: typeId,
-        pg: `${page}`
-      });
-      return this.parseXmlSearchResult(await this.httpClient.getText(url), source.key);
+  /** Android `SourceViewModel.sortJson()` filters block: `{typeId: [{key,name,value:[{n,v}]}]}`. */
+  private parseFilters(node: JsonNode): Record<string, SortFilter[]> {
+    const result: Record<string, SortFilter[]> = {};
+    const root: Record<string, JsonNode> = asRecord(node);
+    for (const typeId of Object.keys(root)) {
+      const raw: JsonNode = root[typeId];
+      const rows: JsonNode[] = Array.isArray(raw) ? asArray(raw) : [raw];
+      const filters: SortFilter[] = [];
+      for (const row of rows) {
+        const filter = this.parseFilter(asRecord(row));
+        if (filter !== undefined) {
+          filters.push(filter);
+        }
+      }
+      if (filters.length > 0) {
+        result[typeId] = filters;
+      }
     }
+    return result;
+  }
+
+  private parseFilter(obj: Record<string, JsonNode>): SortFilter | undefined {
+    const key = safeString(obj, 'key').trim();
+    const name = safeString(obj, 'name').trim();
+    if (key.length === 0) {
+      return undefined;
+    }
+    const values: SortFilterValue[] = [];
+    for (const item of asArray(obj['value'])) {
+      const row: Record<string, JsonNode> = asRecord(item);
+      values.push({ name: safeString(row, 'n'), value: safeString(row, 'v') });
+    }
+    return { key, name: name.length > 0 ? name : key, values };
+  }
+
+  /** Android `SourceViewModel.getList()`, including per-type filter encoding. */
+  async getCategoryList(source: SourceBean, typeId: string, page: number,
+    filterSelect: Record<string, string> = {}): Promise<SearchResult> {
+    this.assertSupportedApiSource(source);
+    const hasFilters = Object.keys(filterSelect).length > 0;
     if (source.type === 4) {
+      // type=4 sends the selected filters as a base64 `ext` payload.
       const url = this.appendQuery(source.api, {
         ac: 'detail',
         filter: 'true',
         t: typeId,
         pg: `${page}`,
-        ext: ''
+        ext: hasFilters ? base64Encode(JSON.stringify(filterSelect)) : ''
       });
       const root = await this.requestJsonRoot(url);
       return this.parseSearchResult(root, source.key);
     }
-    const url = this.appendQuery(source.api, {
-      ac: 'detail',
+    // type=0/1 send each filter as its own query param plus a combined `f` payload.
+    const params: Record<string, string> = {
+      ac: source.type === 0 ? 'videolist' : 'detail',
       t: typeId,
       pg: `${page}`
-    });
+    };
+    for (const key of Object.keys(filterSelect)) {
+      params[key] = filterSelect[key];
+    }
+    if (hasFilters) {
+      params['f'] = JSON.stringify(filterSelect);
+    }
+    const url = this.appendQuery(source.api, params);
+    if (source.type === 0) {
+      return this.parseXmlSearchResult(await this.httpClient.getText(url), source.key);
+    }
     const root = await this.requestJsonRoot(url);
     return this.parseSearchResult(root, source.key);
   }
@@ -150,7 +206,7 @@ export class SourceService {
     return Promise.all(tasks);
   }
 
-  parseSearchResult(root: Record<string, unknown>, sourceKey: string): SearchResult {
+  parseSearchResult(root: Record<string, JsonNode>, sourceKey: string): SearchResult {
     return {
       list: this.parseVodList(root, sourceKey),
       page: safeNumber(root, 'page', 1),
@@ -160,12 +216,12 @@ export class SourceService {
     };
   }
 
-  parseVodList(root: Record<string, unknown>, sourceKey: string): VodInfo[] {
-    return asArray(root['list']).map((item: unknown): VodInfo => this.parseVodInfo(asRecord(item), sourceKey))
+  parseVodList(root: Record<string, JsonNode>, sourceKey: string): VodInfo[] {
+    return asArray(root['list']).map((item: JsonNode): VodInfo => this.parseVodInfo(asRecord(item), sourceKey))
       .filter((item: VodInfo) => item.id.length > 0 && item.name.length > 0);
   }
 
-  parseVodInfo(obj: Record<string, unknown>, sourceKey: string): VodInfo {
+  parseVodInfo(obj: Record<string, JsonNode>, sourceKey: string): VodInfo {
     const id = safeString(obj, 'vod_id', safeString(obj, 'id')).trim();
     const name = safeString(obj, 'vod_name', safeString(obj, 'name')).trim();
     const playFrom = safeString(obj, 'vod_play_from');
@@ -195,9 +251,9 @@ export class SourceService {
     };
   }
 
-  private async requestJsonRoot(url: string): Promise<Record<string, unknown>> {
+  private async requestJsonRoot(url: string): Promise<Record<string, JsonNode>> {
     const text = await this.httpClient.getText(url);
-    return asRecord(JSON.parse(text));
+    return asRecord(parseJson(text));
   }
 
   private visibleSearchableSources(quick: boolean): SourceBean[] {
@@ -303,7 +359,6 @@ export class SourceService {
   private parseXmlHomeContent(xml: string, sourceKey: string): SourceHomeContent {
     return {
       classes: this.parseXmlClasses(xml),
-      filters: {},
       list: this.parseXmlVideos(xml, sourceKey)
     };
   }
@@ -328,7 +383,7 @@ export class SourceService {
       const sortId = this.attr(match[1], 'id').trim();
       const sortName = this.cleanXmlText(match[2]).trim();
       if (sortId.length > 0 && sortName.length > 0) {
-        result.push({ sortId, sortName });
+        result.push({ sortId, sortName, filters: [] });
       }
       match = tyRegex.exec(classBody);
     }
@@ -375,7 +430,7 @@ export class SourceService {
     };
   }
 
-  private parseXmlSeries(videoBody: string): { flags: VodSeriesFlag[]; map: Record<string, VodSeries[]> } {
+  private parseXmlSeries(videoBody: string): SeriesData {
     const flags: VodSeriesFlag[] = [];
     const map: Record<string, VodSeries[]> = {};
     const dlBody = this.tagBody(videoBody, 'dl');
@@ -388,7 +443,7 @@ export class SourceService {
       map[flagName] = this.parseEpisodes(this.cleanXmlText(match[2]));
       match = ddRegex.exec(dlBody);
     }
-    return { flags, map };
+    return new SeriesData(flags, map);
   }
 
   private firstTag(xml: string, tag: string): string {
@@ -460,7 +515,7 @@ export class SourceService {
     }
   }
 
-  private parseSeries(playFrom: string, playUrl: string): { flags: VodSeriesFlag[]; map: Record<string, VodSeries[]> } {
+  private parseSeries(playFrom: string, playUrl: string): SeriesData {
     const fromParts = playFrom.length > 0 ? playFrom.split('$$$') : [];
     const urlParts = playUrl.length > 0 ? playUrl.split('$$$') : [];
     const flags: VodSeriesFlag[] = [];
@@ -473,7 +528,7 @@ export class SourceService {
       flags.push({ name: flagName, selected: groupIndex === 0 });
       map[flagName] = this.parseEpisodes(groupIndex < urlParts.length ? urlParts[groupIndex] : '');
     }
-    return { flags, map };
+    return new SeriesData(flags, map);
   }
 
   private parseEpisodes(raw: string): VodSeries[] {

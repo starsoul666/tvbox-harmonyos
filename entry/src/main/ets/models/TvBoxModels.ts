@@ -95,9 +95,22 @@ export interface VodInfo {
   reverseSort?: boolean;
 }
 
+export interface SortFilterValue {
+  name: string;
+  value: string;
+}
+
+/** Android `MovieSort.SortFilter`. */
+export interface SortFilter {
+  key: string;
+  name: string;
+  values: SortFilterValue[];
+}
+
 export interface MovieSort {
   sortId: string;
   sortName: string;
+  filters: SortFilter[];
 }
 
 export interface SearchResult {
@@ -110,7 +123,6 @@ export interface SearchResult {
 
 export interface SourceHomeContent {
   classes: MovieSort[];
-  filters?: Record<string, unknown>;
   list: VodInfo[];
 }
 

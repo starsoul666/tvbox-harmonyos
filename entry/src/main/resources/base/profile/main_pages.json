@@ -1,6 +1,7 @@
 {
   "src": [
     "pages/Home",
+    "pages/Category",
     "pages/Detail",
     "pages/Play",
     "pages/Live",
