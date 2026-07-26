@@ -2,6 +2,7 @@ import { MovieSort, SearchResult, SourceBean, SourceHomeContent, SourceSearchRes
 import { asArray, asRecord, safeNumber, safeString } from '../utils/JsonUtil';
 import { apiConfigService } from './ApiConfigService';
 import { HttpClient } from './HttpClient';
+import { errorMessage } from '../utils/ErrorUtil';
 
 export class SourceService {
   private readonly httpClient: HttpClient = new HttpClient();
@@ -142,7 +143,7 @@ export class SourceService {
         return {
           source,
           result: this.emptyResult(),
-          error: this.stringifyError(error)
+          error: errorMessage(error)
         };
       }
     });
@@ -513,13 +514,6 @@ export class SourceService {
     };
   }
 
-  private stringifyError(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-    const text = JSON.stringify(error);
-    return text === undefined || text.length === 0 ? String(error) : text;
-  }
 }
 
 export const sourceService = new SourceService();

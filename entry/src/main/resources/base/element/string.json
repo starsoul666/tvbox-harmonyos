@@ -15,6 +15,14 @@
     {
       "name": "app_name",
       "value": "TVBox"
+    },
+    {
+      "name": "reason_read_media",
+      "value": "Read local media files for playback"
+    },
+    {
+      "name": "reason_write_media",
+      "value": "Save downloaded media files"
     }
   ]
 }

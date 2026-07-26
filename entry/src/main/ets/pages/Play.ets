@@ -4,7 +4,8 @@ import { apiConfigService } from '../services/ApiConfigService';
 import { PlaybackResolveResult, playbackService } from '../services/PlaybackService';
 import { settingsStore } from '../services/SettingsStore';
 import { vodDataStore } from '../services/VodDataStore';
-import { asArray, asRecord, safeString } from '../utils/JsonUtil';
+import { asArray, asRecord, JsonNode, parseJson, safeString } from '../utils/JsonUtil';
+import { errorMessage } from '../utils/ErrorUtil';
 
 @Entry
 @Component
@@ -134,19 +135,14 @@ struct Play {
       return [];
     }
     try {
-      const parsed: unknown = JSON.parse(value);
-      if (!Array.isArray(parsed)) {
-        return [];
-      }
+      const rows: JsonNode[] = asArray(parseJson(value));
       const result: VodSeries[] = [];
-      for (const item of parsed) {
-        const row = item as Record<string, unknown>;
-        const nameValue = row['name'];
-        const urlValue = row['url'];
-        const url = urlValue === undefined ? '' : String(urlValue);
+      for (const item of rows) {
+        const row: Record<string, JsonNode> = asRecord(item);
+        const url = safeString(row, 'url');
         if (url.length > 0) {
           result.push({
-            name: nameValue === undefined ? `第${result.length + 1}集` : String(nameValue),
+            name: safeString(row, 'name', `第${result.length + 1}集`),
             url
           });
         }
@@ -252,7 +248,7 @@ struct Play {
       }
       this.playUrl = this.rawUrl;
       this.parseWarning = '解析失败，暂用原始地址';
-      this.parseStatus = this.errorMessage(error);
+      this.parseStatus = errorMessage(error);
       this.errorText = this.parseStatus;
       this.statusText = '解析失败';
       this.isPlaying = true;
@@ -285,13 +281,6 @@ struct Play {
     return parse.isDefault;
   }
 
-  errorMessage(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-    return String(error);
-  }
-
   appendParseWarning(message: string): void {
     this.parseWarning = this.parseWarning.length > 0 ? `${this.parseWarning}；${message}` : message;
   }
@@ -305,8 +294,8 @@ struct Play {
       return {};
     }
     try {
-      const root = asRecord(JSON.parse(this.playerCfg));
-      const rows = asArray(root['headers']);
+      const root: Record<string, JsonNode> = asRecord(parseJson(this.playerCfg));
+      const rows: JsonNode[] = asArray(root['headers']);
       const result: Record<string, string> = {};
       for (const item of rows) {
         const row = asRecord(item);

@@ -1,27 +1,30 @@
-export type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
-export type JsonObject = Record<string, JsonValue>;
+export type JsonNode = Object | null | undefined;
 
-export function asRecord(value: unknown): Record<string, unknown> {
-  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
+export function parseJson(text: string): JsonNode {
+  return JSON.parse(text) as JsonNode;
+}
+
+export function asRecord(value: JsonNode): Record<string, JsonNode> {
+  if (value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, JsonNode>;
   }
   return {};
 }
 
-export function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value as unknown[] : [];
+export function asArray(value: JsonNode): JsonNode[] {
+  return Array.isArray(value) ? value as JsonNode[] : [];
 }
 
-export function safeString(record: Record<string, unknown>, key: string, fallback: string = ''): string {
-  const value = record[key];
+export function safeString(record: Record<string, JsonNode>, key: string, fallback: string = ''): string {
+  const value: JsonNode = record[key];
   if (value === undefined || value === null) {
     return fallback;
   }
   return String(value);
 }
 
-export function safeNumber(record: Record<string, unknown>, key: string, fallback: number = 0): number {
-  const value = record[key];
+export function safeNumber(record: Record<string, JsonNode>, key: string, fallback: number = 0): number {
+  const value: JsonNode = record[key];
   if (typeof value === 'number') {
     return value;
   }
@@ -32,10 +35,10 @@ export function safeNumber(record: Record<string, unknown>, key: string, fallbac
   return fallback;
 }
 
-export function safeStringList(record: Record<string, unknown>, key: string): string[] {
-  const value = record[key];
+export function safeStringList(record: Record<string, JsonNode>, key: string): string[] {
+  const value: JsonNode = record[key];
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.map((item: unknown) => String(item));
+  return (value as JsonNode[]).map((item: JsonNode) => String(item));
 }

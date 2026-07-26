@@ -4,6 +4,7 @@ import { MovieSort, SourceBean, VodInfo } from '../models/TvBoxModels';
 import { apiConfigService } from '../services/ApiConfigService';
 import { settingsStore } from '../services/SettingsStore';
 import { sourceService } from '../services/SourceService';
+import { errorMessage } from '../utils/ErrorUtil';
 
 interface HomeEntry {
   title: string;
@@ -92,7 +93,7 @@ struct Home {
       this.recommendations = content.list;
       this.contentStatus = `首页分类 ${content.classes.length} 个，推荐 ${content.list.length} 条`;
     } catch (error) {
-      this.contentStatus = `首页内容加载失败：${this.stringifyError(error)}`;
+      this.contentStatus = `首页内容加载失败：${errorMessage(error)}`;
     } finally {
       this.contentLoading = false;
     }
@@ -112,13 +113,6 @@ struct Home {
     });
   }
 
-  stringifyError(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-    const text = JSON.stringify(error);
-    return text === undefined || text.length === 0 ? String(error) : text;
-  }
 
   build() {
     Column() {

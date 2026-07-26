@@ -3,6 +3,7 @@ import { SourceSearchResult, VodInfo } from '../models/TvBoxModels';
 import { settingsStore } from '../services/SettingsStore';
 import { sourceService } from '../services/SourceService';
 import { SearchHistoryItem, vodDataStore } from '../services/VodDataStore';
+import { errorMessage } from '../utils/ErrorUtil';
 
 @Entry
 @Component
@@ -44,7 +45,7 @@ struct FastSearch {
       this.statusText = hitCount > 0 ? `快搜命中 ${hitCount} 条，${errorCount} 个源失败` :
         errorCount > 0 ? `未命中，${errorCount} 个源失败` : '未命中';
     } catch (error) {
-      this.statusText = `快搜失败：${this.stringifyError(error)}`;
+      this.statusText = `快搜失败：${errorMessage(error)}`;
     } finally {
       this.searching = false;
     }
@@ -60,13 +61,6 @@ struct FastSearch {
     });
   }
 
-  stringifyError(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-    const text = JSON.stringify(error);
-    return text === undefined || text.length === 0 ? String(error) : text;
-  }
 
   build() {
     Column() {

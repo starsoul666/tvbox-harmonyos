@@ -4,6 +4,7 @@ import { apiConfigService } from '../services/ApiConfigService';
 import { settingsStore } from '../services/SettingsStore';
 import { sourceService } from '../services/SourceService';
 import { vodDataStore } from '../services/VodDataStore';
+import { errorMessage } from '../utils/ErrorUtil';
 
 @Entry
 @Component
@@ -35,7 +36,7 @@ struct Detail {
       try {
         await apiConfigService.loadConfigFromSettings(true);
       } catch (error) {
-        this.statusText = `配置加载失败：${this.stringifyError(error)}`;
+        this.statusText = `配置加载失败：${errorMessage(error)}`;
         return;
       }
     }
@@ -67,7 +68,7 @@ struct Detail {
       }
     } catch (error) {
       this.vod = null;
-      this.statusText = `详情加载失败：${this.stringifyError(error)}`;
+      this.statusText = `详情加载失败：${errorMessage(error)}`;
     } finally {
       this.loading = false;
     }
@@ -121,13 +122,6 @@ struct Detail {
     return series === undefined ? [] : series;
   }
 
-  stringifyError(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-    const text = JSON.stringify(error);
-    return text === undefined || text.length === 0 ? String(error) : text;
-  }
 
   valueOrEmpty(value: string | undefined): string {
     return value === undefined ? '' : value;

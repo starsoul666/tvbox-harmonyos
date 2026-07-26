@@ -1,11 +1,12 @@
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import { HawkConfig } from '../constants/HawkConfig';
-import { DriveFileItem, DriveType, StorageDrive, VodInfo } from '../models/TvBoxModels';
+import { DriveFileItem, DriveType, PlayerCfg, PlayerCfgHeader, StorageDrive, VodInfo } from '../models/TvBoxModels';
 import { driveDataStore } from '../services/DriveDataStore';
 import { driveService } from '../services/DriveService';
 import { settingsStore } from '../services/SettingsStore';
 import { vodDataStore } from '../services/VodDataStore';
+import { errorMessage } from '../utils/ErrorUtil';
 
 @Entry
 @Component
@@ -168,7 +169,7 @@ struct Drive {
     } catch (error) {
       this.items = [];
       this.allItems = [];
-      this.statusText = `加载失败：${this.stringifyError(error)}`;
+      this.statusText = `加载失败：${errorMessage(error)}`;
     } finally {
       this.loading = false;
     }
@@ -245,9 +246,7 @@ struct Drive {
       ? driveService.getWebDavAuthorization(this.selectedDrive)
       : '';
     if (authorization.length > 0) {
-      vod.playerCfg = JSON.stringify({
-        headers: [{ name: 'authorization', value: authorization }]
-      });
+      vod.playerCfg = JSON.stringify(new PlayerCfg([new PlayerCfgHeader('authorization', authorization)]));
     }
     vodDataStore.insertVodRecord('_drive', vod);
     router.pushUrl({
@@ -340,13 +339,6 @@ struct Drive {
     return this.driveTypeInput === DriveType.WEBDAV ? 'WebDAV' : 'Alist';
   }
 
-  stringifyError(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-    const text = JSON.stringify(error);
-    return text === undefined || text.length === 0 ? String(error) : text;
-  }
 
   build() {
     Column() {

@@ -224,3 +224,21 @@ export interface TvBoxConfigState {
   jarCache: string;
   livePlayHeaders?: unknown[];
 }
+
+export class PlayerCfgHeader {
+  name: string;
+  value: string;
+
+  constructor(name: string, value: string) {
+    this.name = name;
+    this.value = value;
+  }
+}
+
+export class PlayerCfg {
+  headers: PlayerCfgHeader[];
+
+  constructor(headers: PlayerCfgHeader[]) {
+    this.headers = headers;
+  }
+}

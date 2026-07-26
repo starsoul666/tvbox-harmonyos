@@ -7,6 +7,17 @@ import { epgAliasService } from '../services/EpgAliasService';
 import { EpgProgram, epgService } from '../services/EpgService';
 import { liveHeaderService } from '../services/LiveHeaderService';
 import { settingsStore } from '../services/SettingsStore';
+import { errorMessage } from '../utils/ErrorUtil';
+
+class ChannelPosition {
+  groupIndex: number;
+  channelIndex: number;
+
+  constructor(groupIndex: number, channelIndex: number) {
+    this.groupIndex = groupIndex;
+    this.channelIndex = channelIndex;
+  }
+}
 
 @Entry
 @Component
@@ -91,7 +102,7 @@ struct Live {
       try {
         await apiConfigService.loadConfigFromSettings(true);
       } catch (error) {
-        this.errorText = `配置加载失败：${this.stringifyError(error)}`;
+        this.errorText = `配置加载失败：${errorMessage(error)}`;
       }
     }
   }
@@ -103,7 +114,7 @@ struct Live {
       this.groups = await apiConfigService.loadLiveSubscription(url);
       this.statusText = `已加载 ${this.groups.length} 个直播分组`;
     } catch (error) {
-      this.errorText = `直播订阅加载失败：${this.stringifyError(error)}`;
+      this.errorText = `直播订阅加载失败：${errorMessage(error)}`;
       this.statusText = '直播加载失败';
     } finally {
       this.loading = false;
@@ -274,7 +285,7 @@ struct Live {
       this.epgStatus = result.programs.length > 0 ? `EPG ${result.dateText}，${result.programs.length} 条` : `EPG ${result.dateText} 暂无节目`;
     } catch (error) {
       this.epgPrograms = [];
-      this.epgStatus = `EPG 加载失败：${this.stringifyError(error)}`;
+      this.epgStatus = `EPG 加载失败：${errorMessage(error)}`;
     } finally {
       this.epgLoading = false;
     }
@@ -350,34 +361,25 @@ struct Live {
     await this.openSelectedChannel(true);
   }
 
-  resolveNextChannel(offset: number): { groupIndex: number; channelIndex: number } | undefined {
+  resolveNextChannel(offset: number): ChannelPosition | undefined {
     const direction = offset >= 0 ? 1 : -1;
     const channels = this.getChannels(this.selectedGroupIndex);
     if (channels.length === 0) {
       return undefined;
     }
-    let channelIndex = this.selectedChannelIndex + direction;
+    const channelIndex = this.selectedChannelIndex + direction;
     if (channelIndex >= 0 && channelIndex < channels.length) {
-      return { groupIndex: this.selectedGroupIndex, channelIndex };
+      return new ChannelPosition(this.selectedGroupIndex, channelIndex);
     }
     if (!this.liveCrossGroup) {
-      return {
-        groupIndex: this.selectedGroupIndex,
-        channelIndex: direction > 0 ? 0 : channels.length - 1
-      };
+      return new ChannelPosition(this.selectedGroupIndex, direction > 0 ? 0 : channels.length - 1);
     }
     const groupIndex = this.findNextOpenGroup(this.selectedGroupIndex, direction);
     const targetChannels = this.getChannels(groupIndex);
     if (targetChannels.length === 0) {
-      return {
-        groupIndex: this.selectedGroupIndex,
-        channelIndex: direction > 0 ? 0 : channels.length - 1
-      };
+      return new ChannelPosition(this.selectedGroupIndex, direction > 0 ? 0 : channels.length - 1);
     }
-    return {
-      groupIndex,
-      channelIndex: direction > 0 ? 0 : targetChannels.length - 1
-    };
+    return new ChannelPosition(groupIndex, direction > 0 ? 0 : targetChannels.length - 1);
   }
 
   findNextOpenGroup(currentIndex: number, direction: number): number {
@@ -612,13 +614,6 @@ struct Live {
     return program.isCurrent ? '#3f2e08' : '#1f2937';
   }
 
-  stringifyError(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-    const text = JSON.stringify(error);
-    return text === undefined || text.length === 0 ? String(error) : text;
-  }
 
   build() {
     Stack({ alignContent: Alignment.Bottom }) {

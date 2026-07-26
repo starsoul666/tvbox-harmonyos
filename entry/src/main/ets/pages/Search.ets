@@ -3,10 +3,11 @@ import { SourceSearchResult, VodInfo } from '../models/TvBoxModels';
 import { settingsStore } from '../services/SettingsStore';
 import { sourceService } from '../services/SourceService';
 import { SearchHistoryItem, vodDataStore } from '../services/VodDataStore';
+import { errorMessage } from '../utils/ErrorUtil';
 
 @Entry
 @Component
-struct Search {
+struct SearchPage {
   @State keyword: string = '';
   @State histories: SearchHistoryItem[] = [];
   @State groups: SourceSearchResult[] = [];
@@ -47,19 +48,12 @@ struct Search {
         this.statusText = errorCount > 0 ? `未找到结果，${errorCount} 个源失败` : '未找到结果';
       }
     } catch (error) {
-      this.statusText = `搜索失败：${this.stringifyError(error)}`;
+      this.statusText = `搜索失败：${errorMessage(error as Error)}`;
     } finally {
       this.searching = false;
     }
   }
 
-  stringifyError(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-    const text = JSON.stringify(error);
-    return text === undefined || text.length === 0 ? String(error) : text;
-  }
 
   openDetail(sourceKey: string, vodId: string): void {
     router.pushUrl({

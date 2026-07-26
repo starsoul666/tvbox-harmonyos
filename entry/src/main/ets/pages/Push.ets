@@ -3,6 +3,7 @@ import { HawkConfig } from '../constants/HawkConfig';
 import { apiConfigService } from '../services/ApiConfigService';
 import { HttpClient } from '../services/HttpClient';
 import { settingsStore } from '../services/SettingsStore';
+import { errorMessage } from '../utils/ErrorUtil';
 
 @Entry
 @Component
@@ -114,7 +115,7 @@ struct Push {
         await this.httpClient.getText(`${baseUrl}/api/updateUrl?url=${encodeURIComponent(value)}`);
         this.statusText = '已按 /api/updateUrl 兼容接口推送';
       } catch (_secondError) {
-        this.statusText = `远端推送失败：${this.stringifyError(firstError)}`;
+        this.statusText = `远端推送失败：${errorMessage(firstError)}`;
       }
     } finally {
       this.sending = false;
@@ -129,13 +130,6 @@ struct Push {
     return `http://${trimmed}:${port}`;
   }
 
-  stringifyError(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-    const text = JSON.stringify(error);
-    return text === undefined || text.length === 0 ? String(error) : text;
-  }
 
   build() {
     Column() {
