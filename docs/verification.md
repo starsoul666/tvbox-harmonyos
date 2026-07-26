@@ -361,3 +361,40 @@ Error Message: SDK component missing.
 ## Current conclusion
 
 The project structure and dependencies are in place, but CLI build verification is blocked by the local DevEco SDK installation. Re-run `assembleHap` after installing the complete HarmonyOS SDK components in DevEco Studio SDK Manager.
+
+## Android parity milestone (build now succeeds)
+
+Before this milestone the project had never compiled. Three blocking classes of failure were fixed:
+
+1. `hvigor/hvigor-config.json5` failed schema validation (missing `dependencies`).
+2. `entry/src/main/module.json5` declared `ohos.permission.READ_MEDIA` / `WRITE_MEDIA` without the
+   mandatory `reason` and `usedScene` fields.
+3. 26 ArkTS strict-mode compile errors (`arkts-no-any-unknown`, `arkts-no-untyped-obj-literals`,
+   `arkts-no-obj-literals-as-types`, `arkts-no-noninferrable-arr-literals`, `arkts-no-delete`,
+   self-referential type aliases, and a `struct Search` collision with the built-in `Search` component).
+
+Reproducible build:
+
+```bash
+DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk ./scripts/verify-build.sh
+```
+
+Result:
+
+```text
+> hvigor BUILD SUCCESSFUL
+HAP output:
+entry/build/default/outputs/default/entry-default-unsigned.hap
+```
+
+Environment used: DevEco Studio bundled SDK, HarmonyOS 6.0.2 (API 22).
+`build-profile.json5` keeps `compatibleSdkVersion` 5.0.3(15) and `targetSdkVersion` 6.0.2(22).
+
+### Not yet verified on device
+
+The build is verified; on-device playback has not been replayed here. The following need a
+real device or emulator run:
+
+- AVPlayer header injection against a Referer-protected source and a WebDAV Basic-auth file.
+- Audio/subtitle track enumeration (depends on the media container).
+- D-pad focus traversal on a TV form factor.

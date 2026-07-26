@@ -37,6 +37,7 @@ Parity requirements:
 | `PushActivity` | `pages/Push` | Manual URL push and play. |
 | `DriveActivity` | `pages/Drive` | Local, Alist, WebDAV browsing, add/edit/delete storage drive, file playback. |
 | `AppsActivity` | `pages/Apps` | Installed app list and launch/uninstall equivalent where HarmonyOS permits it. |
+| `GridFragment` (in `HomeActivity`) | `pages/Category` | Category tabs, filter groups, paging, infinite scroll. |
 
 ## High-risk Android-only subsystems
 
@@ -61,35 +62,88 @@ These need explicit HarmonyOS design decisions before parity can be claimed:
 - P6: Drive/WebDAV/Alist + remote push/server.
 - P7: Android feature matrix edge cases and TV focus polish.
 
+## Build status
+
+`scripts/verify-build.sh` produces `entry/build/default/outputs/default/entry-default-unsigned.hap`
+against HarmonyOS SDK 6.0.2(22).
+
+Note: before this milestone the project had never compiled. `hvigor/hvigor-config.json5` was
+schema-invalid, `module.json5` was missing `reason`/`usedScene` for user-grant permissions, and
+26 ArkTS strict-mode errors were present. All are fixed.
+
 ## Current implemented baseline
 
-- Harmony project scaffold, entry ability, resources, and Android activity page mapping.
-- Android Hawk-compatible setting keys and `App.initParams()` defaults.
-- TVBox JSON config parsing for `sites`, `parses`, `lives`, `flags`, `rules`, `ijk`, `ads`, `spider`, `wallpaper`, `jarCache`, and `livePlayHeaders`.
-- Android-compatible home source selection using `HawkConfig.HOME_API`.
-- Home auto-loads saved config URL, renders visible source list, and now loads basic home categories/recommendations for XML/JSON/type=4 sources.
-- Settings page saves `HawkConfig.API_URL`, `LIVE_URL`, and `EPG_URL`, and triggers config loading.
-- Android-compatible config cache fallback using `MD5(apiUrl)` under app `filesDir`.
-- Android image/Base64 embedded JSON config extraction, `;pk;` AES ECB config decoding, `2423` AES CBC config decoding, and `./` relative path rewrite.
-- `RoomDataManger`-style local JSON persistence for playback history, favorites, and search keywords.
-- History/Favorites/Search pages now render persisted local records and support basic delete/clear interactions.
-- Initial `SourceViewModel` parity for type=0 XML, type=1 JSON, and type=4 API sources: home content, category list, detail, single-source search, quick search, and all-visible-source search request/parse flow.
-- Search page is wired to real XML/JSON/type=4 source search results, preserves search history, groups hits by source, and navigates result rows toward `DetailActivity` parity.
-- FastSearch page is no longer a placeholder: it uses `quickSearch=1` sources, groups incremental-style multi-source results, and opens detail pages.
-- Push page supports manual direct URL playback through the Play page, Android-compatible outbound remote push to another TVBox server using `POST /action` with `do=push&url=...` plus a `/api/updateUrl?url=...` compatibility fallback, and API-type `push_agent` detail entry for manually entered URLs. Detail loading also recognizes Android `push://` IDs and `b64:` URL-safe payloads when a supported `push_agent` exists. Local HTTP server receive endpoints, QR entry, and Spider-type `push_agent` remain pending.
-- Live page now supports Android/FongMi `lives` direct group/channel config, remote M3U/TXT subscription loading, password-protected group prompts, group/channel/source switching, remote-control up/down channel switching, left/right source switching, numeric channel entry with delayed auto-jump, Android-compatible `LIVE_CHANNEL_REVERSE` and `LIVE_CROSS_GROUP` settings, channel-number jump, `LIVE_CHANNEL_GROUP`/`LIVE_CHANNEL` persistence, Android `epg_data.json` logo/name aliases, Android-style EPG URL requests with `{name}`/`{date}` placeholders or `?ch=&date=`, date switching, current-program highlighting, `PLTV/8888` EPG time-shift playback with `?playseek=yyyyMMddHHmm30-yyyyMMddHHmm30`, Android `livePlayHeaders` flag/header matching, and direct ArkUI `Video` playback. Hidden-channel handling, player kernel mapping, and actual Video request-header injection remain pending.
-- Drive page now persists Android-compatible `StorageDrive` records, supports adding/editing/deleting Local/Alist/WebDAV drives, browses local filesystem paths available to the HarmonyOS app sandbox, browses Alist v3 `/api/fs/list` and v2 `/api/public/path`, browses WebDAV with `PROPFIND Depth: 1`, applies `HawkConfig.STORAGE_DRIVE_SORT`, filters the current directory by filename, detects common video file extensions, resolves local `file://`, Alist `/d/path`, and WebDAV direct file URLs, and opens drive videos through Play/history with `sourceKey="_drive"` and `playFlag="drive"`. WebDAV credentials are stored as Android-compatible `url`/`username`/`password`/`initPath` config and copied into `VodInfo.playerCfg` as a Basic Authorization header snapshot. HarmonyOS system file-picker/authorization UX, recursive/deep file search, and actual Video request-header injection remain pending.
-- Apps page is no longer a placeholder: it persists user-added HarmonyOS launch items, can resolve a typed Bundle Name through `launcherBundleManager`/`bundleManager` when platform permissions allow it, saves Bundle/Ability/Module metadata, starts entries through `UIAbilityContext.startAbility`, supports edit mode, and maps Android delete mode to removal from the saved launcher list. Full Android-style automatic enumeration of all non-system launchable apps and ACTION_DELETE uninstall cannot be claimed for a normal HarmonyOS app because the relevant bundle query and uninstall APIs are privileged or enterprise-only.
-- Detail page now consumes `sourceKey`/`vodId`, loads JSON source detail data, renders metadata/description/play groups, supports favorite toggle, and records a compact history entry when an episode is selected.
-- Play page now consumes `sourceKey`/`vodId`/`playFlag`/`playIndex`/`playUrl`/`rawUrl`, resolves Android-style playback for type=0/1 sources through the initial `PlaybackService`, supports type=4 playback API requests, supports type=1 JSON parse APIs and parse switching, preserves `playerCfg` header snapshots, plays the resolved URL through ArkUI `Video`, supports pause/resume, seek, and previous/next episode within the current detail group, restores saved progress, and persists `progress`/`duration`/raw URL/final URL plus the current play group back into history. History rows resume playback with the saved raw URL and restore the saved play group when available.
+### Playback (Play + Live)
 
-## Next parity targets
+- Both screens run on `media.AVPlayer` through `domain/playback/PlaybackSession`, rendering into
+  an `XComponent` surface (`components/player/PlayerSurface.ets`).
+- **HTTP request headers are actually sent** via `media.createMediaSourceWithUrl(url, headers)`.
+  This was the single largest functional gap: the previous ArkUI `Video` component could not send
+  headers, so Referer/User-Agent protected sources, WebDAV Basic auth, and Android
+  `livePlayHeaders` rules were all silently broken.
+- Headers merge in Android order: `playerCfg` snapshot first, then parse-returned headers.
+- Play page controls: play/pause, seek, previous/next episode, episode picker, speed
+  (0.5x-3x), display scale, audio-track and subtitle-track selection, skip-intro/skip-outro
+  with auto-advance, parse switching, and D-pad key handling (left/right seek, up/down episode,
+  OK play/pause, Back closes panel).
+- Per-VOD player settings persist in the Android-compatible `playerCfg` JSON shape
+  (`pl`/`pr`/`ijk`/`sc`/`sp`/`st`/`et` plus a `headers` extension) via `domain/playback/PlayerConfig`.
+- Live page injects matched `livePlayHeaders`, supports the optional on-screen clock, and honors
+  `LIVE_SKIP_PASSWORD`.
 
-1. Complete `clan://localhost` LAN proxy behavior; non-local `clan://host/path` URL rewriting is present.
-2. Expand source parity from XML/JSON/type=4 HTTP APIs to spider type=3 behavior, including Jar/JS/Python loader equivalents.
-3. Expand Play page from the current JSON-parse/type=4/direct ArkUI `Video` flow to full Android `PlayActivity` parity: WebView sniffing rules, parse type=2/3/4/SuperParse, subtitle/audio/danmu controls, display scale, and player-kernel mapping.
-4. Expand live parity from the current direct M3U/TXT playback, EPG time-shift flow, and `livePlayHeaders` matching to hidden-channel handling, actual player request-header injection, and player-kernel mapping.
-5. Complete Push/remote parity for local HTTP server receive endpoints, QR entry, and Spider-type push-agent detail handling.
-6. Complete Drive parity for HarmonyOS file-picker directory authorization, recursive/deep file search, and player-level WebDAV header injection.
-7. Expand Apps parity if a privileged/system distribution path is available: automatic installed-app enumeration, launcher icon resources, and system uninstall handoff.
-8. Start player capability mapping against HarmonyOS AVPlayer and external-player limitations.
+### Settings
+
+Full Android `ModelSettingFragment` parity for the options an ordinary HarmonyOS app can honor:
+config URL + load + cache clear + URL history, home source picker, live/EPG URLs,
+`HOME_SHOW_SOURCE`, `HOME_DEFAULT_SHOW`, `HOME_REC`, `HOME_NUM`, `PLAY_SCALE`, `PLAY_TYPE`,
+`PLAY_RENDER`, `IJK_CODEC`, `BACKGROUND_PLAY_TYPE`, `PLAY_TIME_STEP`, `SHOW_PREVIEW`,
+`VIDEO_PURIFY`, all six live settings, `SEARCH_VIEW`, `FAST_SEARCH_MODE`, `HOME_LOCALE`,
+`THEME_SELECT`, `DOH_URL`, `PARSE_WEBVIEW`, `DEBUG_OPEN`, plus history/search data clearing.
+
+### Browsing and discovery
+
+- `pages/Category` implements Android `GridFragment`: category tabs, per-category filter groups
+  parsed from the config `filters` block, filter selection, paging and infinite scroll.
+  Filters encode per Android rules (query params + `f` for type 0/1, base64 `ext` for type 4).
+- Home categories are clickable and route into the category page; `HOME_REC=2` shows watch
+  history instead of site recommendations; `HOME_DEFAULT_SHOW` launches straight into Live.
+- Detail page: play-flag group switching, reverse episode order, last-watched episode
+  highlighting, description expand/collapse, favorite toggle, push handoff, and Android-style
+  **change source** via multi-site quick search.
+- Search page: per-source selection persisted in the Android `SOURCES_FOR_SEARCH` shape
+  (`{apiUrl: {siteKey: "1"}}`), all/none toggles, `SEARCH_VIEW` list/thumbnail modes,
+  `FAST_SEARCH_MODE`, and search-history reuse.
+- History and Favorites: delete mode, clear-all, progress percentage, `HOME_NUM` row limit,
+  and poster grid for favorites.
+
+### Data and config
+
+- TVBox JSON config parsing for `sites`, `parses`, `lives`, `flags`, `rules`, `ijk`, `ads`,
+  `spider`, `wallpaper`, `jarCache`, `livePlayHeaders`.
+- Android image/Base64 embedded config, `;pk;` AES ECB, `2423` AES CBC, `./` relative rewrite,
+  and `MD5(apiUrl)` cache fallback under `filesDir`.
+- Local JSON persistence for playback history, favorites, search keywords and storage drives.
+- Source flow for type=0 XML, type=1 JSON and type=4 API: home, category, detail, search,
+  quick search.
+- Drive page: Local/Alist/WebDAV browsing, add/edit/delete, sorting, filename filter,
+  and WebDAV playback with working Basic auth headers.
+
+## Known gaps
+
+These require native (C++/NAPI) work or privileged platform APIs and remain unimplemented:
+
+1. **Spider type=3 sources** — QuickJS JS spiders, Python `pyramid` spiders, and Java jar
+   loaders. Type=3 is common in real-world TVBox configs, so many configs will only expose
+   their type 0/1/4 sites.
+2. **WebView sniffing (parse type=0)** and parse types 2/3/SuperParse. Currently type=0 parses
+   fall back to URL concatenation.
+3. **Local HTTP server** — inbound push receive endpoints, remote-control web UI, `clan://localhost`
+   proxy, and M3U8 proxy rewriting.
+4. **FFmpeg fallback player** for formats/protocols AVPlayer rejects (RTSP, RTMP, some TS/MKV).
+5. **P2P / Thunder protocols.**
+6. **Danmu rendering** and external subtitle search/loading.
+7. **Installed-app enumeration and uninstall** in the Apps page — the HarmonyOS bundle query and
+   uninstall APIs are privileged/enterprise-only, so this stays a manually curated launcher list.
+8. **Player kernel matrix** — IJK/Exo/Ali/MX/Reex/Kodi cannot be shipped; everything maps onto
+   AVPlayer. The setting is retained for config compatibility only.
+9. **Themes and localization** are persisted but not yet applied to the UI.

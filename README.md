@@ -1,26 +1,52 @@
 # TVBox HarmonyOS Next
 
-HarmonyOS Next / ArkTS version of `/Users/jwli/workspace/github/tvbox`.
+HarmonyOS Next / ArkTS port of `/Users/jwli/workspace/github/tvbox`.
 
-This repository is intentionally structured around feature parity with the Android project. The Android project remains the source of truth until each item in `docs/android-parity.md` is implemented and verified on HarmonyOS.
+The Android project remains the source of truth. `docs/android-parity.md` tracks what is
+implemented, what is substituted, and what is still missing.
 
-## Current baseline
+## Build
 
-- Stage model HarmonyOS app scaffold.
-- TV landscape-first routing and pages matching Android activities.
-- Core Android-compatible data models for source, parse, VOD, live, history, and settings.
-- Config parsing service for TVBox JSON config (`sites`, `parses`, `lives`, `flags`, `rules`, `ijk`, `ads`) with Android-compatible cache fallback.
-- Settings defaults mirrored from Android `App.initParams()`.
-- Home source selection persists with the Android-compatible `home_api` key.
-- Settings can edit Android-compatible config, live subscription, and EPG URL keys.
-- Android image/Base64 embedded JSON config extraction, `;pk;` AES ECB configs, and `2423` AES CBC configs are supported.
-- Initial type=0 XML, type=1 JSON, and type=4 API source flow is present for home content, category list, detail, search, and quick search; Home/Search/FastSearch/Detail pages use this flow for real result and metadata rendering.
-- Detail page supports favorite toggle and writes a compact playback history snapshot before opening Play.
-- Push page supports manual direct URL playback through Play, Android-compatible outbound remote push to another TVBox (`POST /action do=push`, with `/api/updateUrl` fallback), and API-type `push_agent` detail entry for manually entered URLs; local receiving server remains pending.
-- Live page supports config `lives` direct channel groups plus M3U/TXT live subscriptions, password-protected groups, group/channel/source switching, remote-control up/down/left/right and numeric channel switching, Android-compatible reverse/cross-group channel switching settings, channel-number jump, last channel persistence, Android `epg_data.json` logo/name aliases, EPG program lookup, `PLTV/8888` EPG time-shift playback, Android `livePlayHeaders` rule matching, and ArkUI `Video` playback.
-- Drive page supports Android-compatible storage drive records plus Local/Alist/WebDAV add/edit/delete, folder browsing, current-directory filename search, persisted sort mode, video file detection, direct playback through Play, and WebDAV Basic Authorization snapshots in `VodInfo.playerCfg`.
-- Apps page now supports persisted HarmonyOS app launch items, Bundle/Ability lookup when platform permissions allow it, direct `startAbility` launching, editing, and a delete-mode list removal fallback for the Android uninstall flow.
-- Play page now uses ArkUI `Video` for playback, pause/resume, seeking, previous/next episode within the current group, resume-position restore, playback-history progress persistence, current-group history restoration, `playerCfg` header snapshot preservation, and an initial Android-style JSON/type=4 parse switching flow.
+```bash
+DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk ./scripts/verify-build.sh
+```
+
+Produces `entry/build/default/outputs/default/entry-default-unsigned.hap`.
+
+Requires DevEco Studio with the HarmonyOS 6.0.2 (API 22) SDK. Or open the directory in
+DevEco Studio and let it sync `oh-package.json5` / `hvigorfile.ts`.
+
+## What works
+
+- **Playback on AVPlayer with real HTTP header injection** — Referer/User-Agent protected
+  sources, WebDAV Basic auth, and Android `livePlayHeaders` rules all work. Play and Live share
+  one `PlaybackSession`.
+- **Player controls** — play/pause, seek, prev/next episode, episode picker, speed, display
+  scale, audio/subtitle track selection, skip intro/outro with auto-advance, parse switching,
+  D-pad navigation. Per-VOD settings persist in the Android `playerCfg` JSON shape.
+- **Config loading** — TVBox JSON configs including image/Base64 embedded, `;pk;` AES ECB,
+  `2423` AES CBC, `./` relative rewrite, and `MD5(apiUrl)` disk cache fallback.
+- **Sources** — type=0 XML, type=1 JSON and type=4 API for home, category, detail, search and
+  quick search.
+- **Browsing** — category page with filter groups, paging and infinite scroll; Detail with
+  change-source, reverse order and flag groups; Search with per-source selection.
+- **Live TV** — channel groups, EPG with time-shift, group passwords, remote-control switching,
+  numeric channel jump, M3U/TXT subscriptions.
+- **Drive** — Local, Alist and WebDAV browsing and playback.
+- **Settings** — the full Android setting matrix, using Android-compatible Hawk keys.
+- **Local data** — playback history, favorites, search history, storage drives.
+
+## What does not work yet
+
+Native (C++/NAPI) or privileged-API subsystems. See `docs/android-parity.md` for detail.
+
+- Spider type=3 sources (QuickJS JS, Python, Java jar loaders)
+- WebView sniffing (parse type=0) and parse types 2/3/SuperParse
+- Local HTTP server: inbound push, remote-control UI, `clan://localhost` proxy
+- FFmpeg fallback player, P2P/Thunder protocols
+- Danmu rendering, external subtitle search
+- Installed-app enumeration and uninstall (privileged HarmonyOS APIs)
+- Theme and locale switching are persisted but not applied
 
 ## Main Android references
 
@@ -28,16 +54,24 @@ This repository is intentionally structured around feature parity with the Andro
 - App entry/defaults: `app/src/main/java/com/github/tvbox/osc/base/App.java`
 - Config parser: `app/src/main/java/com/github/tvbox/osc/api/ApiConfig.java`
 - Screens: `app/src/main/java/com/github/tvbox/osc/ui/activity/*Activity.java`
+- Settings UI: `app/src/main/java/com/github/tvbox/osc/ui/fragment/ModelSettingFragment.java`
 - Models: `app/src/main/java/com/github/tvbox/osc/bean/*`
 - Settings keys: `app/src/main/java/com/github/tvbox/osc/util/HawkConfig.java`
 
-## Build/import
+## Layout
 
-Open this directory in DevEco Studio and let it sync `oh-package.json5` / `hvigorfile.ts`.
-
-CLI build depends on local DevEco/Harmony SDK configuration.
-Current local CLI verification is recorded in `docs/verification.md`.
+```text
+entry/src/main/ets/
+  components/player/   ArkUI player surface
+  constants/           Hawk keys and Android defaults
+  domain/playback/     Player session, config, ordering
+  models/              Android-compatible data models
+  pages/               One page per Android activity
+  services/            Config, source, playback, live, drive, storage
+  utils/               JSON, AES, hashing, base64, errors
+```
 
 ## Migration rule
 
-Do not treat a Harmony page as complete until it matches the Android behavior listed in `docs/android-parity.md` and has a replayable verification note.
+Do not treat a page as complete until it matches the Android behavior in
+`docs/android-parity.md` and has a replayable verification note in `docs/verification.md`.
