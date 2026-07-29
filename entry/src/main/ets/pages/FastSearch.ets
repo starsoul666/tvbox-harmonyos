@@ -1,5 +1,7 @@
 import router from '@ohos.router';
+import { HawkConfig } from '../constants/HawkConfig';
 import { SourceSearchResult, VodInfo } from '../models/TvBoxModels';
+import { appearanceService, FeatureLabels, ThemePalette } from '../services/AppearanceService';
 import { settingsStore } from '../services/SettingsStore';
 import { sourceService } from '../services/SourceService';
 import { SearchHistoryItem, vodDataStore } from '../services/VodDataStore';
@@ -13,6 +15,8 @@ struct FastSearch {
   @State groups: SourceSearchResult[] = [];
   @State searching: boolean = false;
   @State statusText: string = '快搜会使用 quickSearch=1 的 XML/JSON/type=4 数据源';
+  @State themeSelect: number = 0;
+  @State localeSelect: number = 0;
 
   aboutToAppear(): void {
     this.initPage();
@@ -20,6 +24,10 @@ struct FastSearch {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await appearanceService.init();
+    this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
+    this.localeSelect = await settingsStore.get<number>(HawkConfig.HOME_LOCALE, 0);
+    this.statusText = this.labels().fastSearchInitialStatus;
     this.refreshHistory();
     const rawParams = router.getParams();
     if (rawParams !== undefined) {
@@ -44,17 +52,17 @@ struct FastSearch {
     vodDataStore.addSearchKeyword(value);
     this.refreshHistory();
     this.searching = true;
-    this.statusText = `快搜中：${value}`;
+    this.statusText = `${this.labels().fastSearchingPrefix}${value}`;
     this.groups = [];
     try {
       const results = await sourceService.searchAll(value, true);
       this.groups = results.filter((item: SourceSearchResult) => item.result.list.length > 0 || !!item.error);
       const hitCount = results.reduce((count: number, item: SourceSearchResult) => count + item.result.list.length, 0);
       const errorCount = results.filter((item: SourceSearchResult) => !!item.error).length;
-      this.statusText = hitCount > 0 ? `快搜命中 ${hitCount} 条，${errorCount} 个源失败` :
-        errorCount > 0 ? `未命中，${errorCount} 个源失败` : '未命中';
+      this.statusText = hitCount > 0 ? `${this.labels().fastSearchHitPrefix}${hitCount}${this.labels().fastSearchHitMiddle}${errorCount}${this.labels().fastSearchHitSuffix}` :
+        errorCount > 0 ? `${this.labels().fastSearchNoHit}${this.labels().fastSearchHitMiddle}${errorCount}${this.labels().fastSearchHitSuffix}` : this.labels().fastSearchNoHit;
     } catch (error) {
-      this.statusText = `快搜失败：${errorMessage(error)}`;
+      this.statusText = `${this.labels().fastSearchFailedPrefix}${errorMessage(error)}`;
     } finally {
       this.searching = false;
     }
@@ -70,25 +78,34 @@ struct FastSearch {
     });
   }
 
+  theme(): ThemePalette {
+    return appearanceService.themeByIndex(this.themeSelect);
+  }
+
+  labels(): FeatureLabels {
+    appearanceService.setLocale(this.localeSelect);
+    return appearanceService.featureLabels();
+  }
+
 
   build() {
     Column() {
-      Text('< 返回').fontSize(18).fontColor(Color.White).alignSelf(ItemAlign.Start).onClick(() => router.back())
-      Text('快搜').fontSize(36).fontWeight(FontWeight.Bold).fontColor(Color.White).margin({ top: 32 })
+      Text(this.labels().back).fontSize(18).fontColor(this.theme().text).alignSelf(ItemAlign.Start).onClick(() => router.back())
+      Text(this.labels().fastSearchTitle).fontSize(36).fontWeight(FontWeight.Bold).fontColor(this.theme().text).margin({ top: 32 })
       Row() {
-        TextInput({ text: this.keyword, placeholder: '输入关键词' })
+        TextInput({ text: this.keyword, placeholder: this.labels().keywordPlaceholder })
           .height(52)
           .fontSize(18)
           .layoutWeight(1)
           .onChange((value: string) => this.keyword = value)
-        Button(this.searching ? '搜索中' : '快搜')
+        Button(this.searching ? this.labels().searchingButton : this.labels().fastSearchButton)
           .height(52)
           .margin({ left: 12 })
           .onClick(() => this.submitSearch())
       }.width('100%').margin({ top: 24 })
       Text(this.statusText)
         .fontSize(15)
-        .fontColor('#93a4b8')
+        .fontColor(this.theme().mutedText)
         .margin({ top: 12 })
         .width('100%')
       if (this.histories.length > 0) {
@@ -96,10 +113,10 @@ struct FastSearch {
           ForEach(this.histories, (item: SearchHistoryItem) => {
             Text(item.searchKeyWords)
               .fontSize(15)
-              .fontColor(Color.White)
+              .fontColor(this.theme().text)
               .padding({ left: 14, right: 14, top: 7, bottom: 7 })
               .margin({ right: 10, top: 10 })
-              .backgroundColor('#1f2937')
+              .backgroundColor(this.theme().panelBg)
               .borderRadius(16)
               .onClick(() => {
                 this.keyword = item.searchKeyWords;
@@ -117,11 +134,11 @@ struct FastSearch {
                   Text(group.source.name)
                     .fontSize(18)
                     .fontWeight(FontWeight.Medium)
-                    .fontColor(Color.White)
+                    .fontColor(this.theme().text)
                     .layoutWeight(1)
-                  Text(group.error !== undefined && group.error.length > 0 ? '失败' : `${group.result.list.length} 条`)
+                  Text(group.error !== undefined && group.error.length > 0 ? this.labels().failed : `${group.result.list.length}${this.labels().resultSuffix}`)
                     .fontSize(13)
-                    .fontColor(group.error !== undefined && group.error.length > 0 ? '#fca5a5' : '#93a4b8')
+                    .fontColor(group.error !== undefined && group.error.length > 0 ? '#fca5a5' : this.theme().mutedText)
                 }.width('100%')
                 if (group.error !== undefined && group.error.length > 0) {
                   Text(group.error === undefined ? '' : group.error)
@@ -135,13 +152,13 @@ struct FastSearch {
                     Row() {
                       Text(vod.name)
                         .fontSize(16)
-                        .fontColor(Color.White)
+                        .fontColor(this.theme().text)
                         .layoutWeight(1)
                         .maxLines(1)
                         .textOverflow({ overflow: TextOverflow.Ellipsis })
                       Text(vod.note === undefined ? '' : vod.note)
                         .fontSize(12)
-                        .fontColor('#93a4b8')
+                        .fontColor(this.theme().mutedText)
                         .maxLines(1)
                         .textOverflow({ overflow: TextOverflow.Ellipsis })
                         .width(180)
@@ -156,7 +173,7 @@ struct FastSearch {
               }
               .width('100%')
               .padding(16)
-              .backgroundColor('#151d2b')
+              .backgroundColor(this.theme().cardBg)
               .borderRadius(14)
             }.margin({ top: 12 })
           }, (group: SourceSearchResult) => group.source.key)
@@ -164,6 +181,6 @@ struct FastSearch {
       } else {
         Blank().layoutWeight(1)
       }
-    }.width('100%').height('100%').padding(48).backgroundColor('#0b1020')
+    }.width('100%').height('100%').padding(48).backgroundColor(this.theme().pageBg)
   }
 }

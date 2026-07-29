@@ -3,7 +3,9 @@ import common from '@ohos.app.ability.common';
 import { AppLaunchItem } from '../models/TvBoxModels';
 import { appDataStore } from '../services/AppDataStore';
 import { AppQueryResult, appLaunchService } from '../services/AppLaunchService';
+import { appearanceService, ThemePalette } from '../services/AppearanceService';
 import { settingsStore } from '../services/SettingsStore';
+import { HawkConfig } from '../constants/HawkConfig';
 
 @Entry
 @Component
@@ -16,6 +18,7 @@ struct Apps {
   @State abilityName: string = '';
   @State moduleName: string = '';
   @State statusText: string = 'HarmonyOS 普通应用无法像 Android 一样直接枚举全部非系统应用，可添加 Bundle/Ability 后启动。';
+  @State themeSelect: number = 0;
 
   aboutToAppear(): void {
     this.initPage();
@@ -23,6 +26,8 @@ struct Apps {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await appearanceService.init();
+    this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
     this.refreshApps();
   }
 
@@ -100,6 +105,10 @@ struct Apps {
     await this.launchApp(item);
   }
 
+  theme(): ThemePalette {
+    return appearanceService.themeByIndex(this.themeSelect);
+  }
+
   @Builder
   appCard(item: AppLaunchItem) {
     Column() {
@@ -107,26 +116,26 @@ struct Apps {
         Text(item.iconText)
           .fontSize(24)
           .fontWeight(FontWeight.Bold)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .width(54)
           .height(54)
           .textAlign(TextAlign.Center)
-          .backgroundColor(this.deleteMode ? '#991b1b' : '#2563eb')
+          .backgroundColor(this.deleteMode ? '#991b1b' : this.theme().primary)
           .borderRadius(16)
         Column() {
           Text(item.name)
             .fontSize(20)
-            .fontColor(Color.White)
+            .fontColor(this.theme().text)
             .fontWeight(FontWeight.Medium)
             .maxLines(1)
           Text(item.bundleName)
             .fontSize(13)
-            .fontColor('#93a4b8')
+            .fontColor(this.theme().mutedText)
             .margin({ top: 4 })
             .maxLines(1)
           Text(item.abilityName.length > 0 ? item.abilityName : '未指定 Ability，启动时由系统解析')
             .fontSize(12)
-            .fontColor('#64748b')
+            .fontColor(this.theme().subtleText)
             .margin({ top: 4 })
             .maxLines(1)
         }.layoutWeight(1).margin({ left: 14 }).alignItems(HorizontalAlign.Start)
@@ -156,9 +165,9 @@ struct Apps {
     }
     .width('100%')
     .padding(18)
-    .backgroundColor('#111827')
+    .backgroundColor(this.theme().fieldBg)
     .borderRadius(16)
-    .border({ width: 1, color: this.deleteMode ? '#ef4444' : '#1f2937' })
+    .border({ width: 1, color: this.deleteMode ? '#ef4444' : this.theme().panelBg })
     .onClick(() => this.onAppClicked(item))
   }
 
@@ -167,7 +176,7 @@ struct Apps {
       Row() {
         Text('< 返回')
           .fontSize(18)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .onClick(() => router.back())
         Blank()
         Button(this.deleteMode ? '退出删除模式' : '删除模式')
@@ -179,13 +188,13 @@ struct Apps {
       Text('应用')
         .fontSize(36)
         .fontWeight(FontWeight.Bold)
-        .fontColor(Color.White)
+        .fontColor(this.theme().text)
         .alignSelf(ItemAlign.Start)
         .margin({ top: 28 })
 
       Text(this.statusText)
         .fontSize(15)
-        .fontColor('#d1d5db')
+        .fontColor(this.theme().text)
         .alignSelf(ItemAlign.Start)
         .margin({ top: 12 })
 
@@ -193,7 +202,7 @@ struct Apps {
         Column() {
           Text(this.editingId > 0 ? '编辑启动项' : '添加启动项')
             .fontSize(20)
-            .fontColor(Color.White)
+            .fontColor(this.theme().text)
             .fontWeight(FontWeight.Medium)
             .alignSelf(ItemAlign.Start)
           TextInput({ text: this.appName, placeholder: '名称，可留空' })
@@ -223,35 +232,35 @@ struct Apps {
             Button('直接保存')
               .height(42)
               .margin({ left: 12 })
-              .backgroundColor('#374151')
+              .backgroundColor(this.theme().cardActiveBg)
               .onClick(() => this.saveManual())
             Button('清空')
               .height(42)
               .margin({ left: 12 })
-              .backgroundColor('#1f2937')
+              .backgroundColor(this.theme().panelBg)
               .onClick(() => this.resetForm())
           }.width('100%').margin({ top: 14 })
           Text('删除模式在 HarmonyOS 版本中移除保存的启动项；系统卸载入口受平台权限限制，无法复刻 Android ACTION_DELETE。')
             .fontSize(13)
-            .fontColor('#93a4b8')
+            .fontColor(this.theme().mutedText)
             .margin({ top: 14 })
             .alignSelf(ItemAlign.Start)
         }
         .width(420)
         .padding(18)
-        .backgroundColor('#0f172a')
+        .backgroundColor(this.theme().cardBg)
         .borderRadius(16)
 
         Column() {
           Row() {
             Text(`已保存应用：${this.apps.length}`)
               .fontSize(20)
-              .fontColor(Color.White)
+              .fontColor(this.theme().text)
               .fontWeight(FontWeight.Medium)
             Blank()
             Button('刷新')
               .height(36)
-              .backgroundColor('#374151')
+              .backgroundColor(this.theme().cardActiveBg)
               .onClick(() => this.refreshApps())
           }.width('100%').alignItems(VerticalAlign.Center)
 
@@ -259,10 +268,10 @@ struct Apps {
             Column() {
               Text('暂无应用启动项')
                 .fontSize(18)
-                .fontColor('#d1d5db')
+                .fontColor(this.theme().mutedText)
               Text('先在左侧输入 Bundle Name 和 Ability Name。')
                 .fontSize(14)
-                .fontColor('#93a4b8')
+                .fontColor(this.theme().mutedText)
                 .margin({ top: 8 })
             }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
           } else {
@@ -286,6 +295,6 @@ struct Apps {
     .width('100%')
     .height('100%')
     .padding(48)
-    .backgroundColor('#0b1020')
+    .backgroundColor(this.theme().pageBg)
   }
 }

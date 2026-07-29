@@ -1,6 +1,7 @@
 import router from '@ohos.router';
 import { HawkConfig } from '../constants/HawkConfig';
 import { SourceBean, SourceSearchResult, VodInfo } from '../models/TvBoxModels';
+import { appearanceService, FeatureLabels, ThemePalette } from '../services/AppearanceService';
 import { searchSourceStore } from '../services/SearchSourceStore';
 import { settingsStore } from '../services/SettingsStore';
 import { sourceService } from '../services/SourceService';
@@ -20,6 +21,8 @@ struct SearchPage {
   @State showSourcePicker: boolean = false;
   @State fastSearchMode: boolean = false;
   @State thumbnailView: boolean = true;
+  @State themeSelect: number = 0;
+  @State localeSelect: number = 0;
 
   aboutToAppear(): void {
     this.initPage();
@@ -27,6 +30,10 @@ struct SearchPage {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await appearanceService.init();
+    this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
+    this.localeSelect = await settingsStore.get<number>(HawkConfig.HOME_LOCALE, 0);
+    this.statusText = this.labels().searchInitialStatus;
     this.fastSearchMode = await settingsStore.get<boolean>(HawkConfig.FAST_SEARCH_MODE, false);
     this.thumbnailView = (await settingsStore.get<number>(HawkConfig.SEARCH_VIEW, 1)) === 1;
     this.sources = searchSourceStore.searchableSources();
@@ -74,13 +81,13 @@ struct SearchPage {
       return;
     }
     if (this.checkedKeys.length === 0) {
-      this.statusText = '请先勾选参与搜索的数据源';
+      this.statusText = this.labels().searchNoSource;
       return;
     }
     vodDataStore.addSearchKeyword(value);
     this.refreshHistory();
     this.searching = true;
-    this.statusText = `正在搜索：${value}`;
+    this.statusText = `${this.labels().searchingPrefix}${value}`;
     this.groups = [];
     try {
       const results = await sourceService.searchAll(value, this.fastSearchMode, this.checkedKeys);
@@ -88,12 +95,12 @@ struct SearchPage {
       const hitCount = results.reduce((count: number, item: SourceSearchResult) => count + item.result.list.length, 0);
       const errorCount = results.filter((item: SourceSearchResult) => !!item.error).length;
       if (hitCount > 0) {
-        this.statusText = `共找到 ${hitCount} 条结果，${errorCount} 个源失败`;
+        this.statusText = `${this.labels().searchFoundPrefix}${hitCount}${this.labels().searchFoundMiddle}${errorCount}${this.labels().searchFoundSuffix}`;
       } else {
-        this.statusText = errorCount > 0 ? `未找到结果，${errorCount} 个源失败` : '未找到结果';
+        this.statusText = errorCount > 0 ? `${this.labels().searchNoResult}${this.labels().searchFoundMiddle}${errorCount}${this.labels().searchFoundSuffix}` : this.labels().searchNoResult;
       }
     } catch (error) {
-      this.statusText = `搜索失败：${errorMessage(error as Error)}`;
+      this.statusText = `${this.labels().searchFailedPrefix}${errorMessage(error as Error)}`;
     } finally {
       this.searching = false;
     }
@@ -106,25 +113,34 @@ struct SearchPage {
     });
   }
 
+  theme(): ThemePalette {
+    return appearanceService.themeByIndex(this.themeSelect);
+  }
+
+  labels(): FeatureLabels {
+    appearanceService.setLocale(this.localeSelect);
+    return appearanceService.featureLabels();
+  }
+
   build() {
     Column() {
       Row() {
-        Text('< 返回')
+        Text(this.labels().back)
           .fontSize(18)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .focusable(true)
           .onClick(() => router.back())
-        Text('搜索')
+        Text(this.labels().searchTitle)
           .fontSize(26)
           .fontWeight(FontWeight.Bold)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .margin({ left: 20 })
           .layoutWeight(1)
-        Button(`数据源 ${this.checkedKeys.length}/${this.sources.length}`)
+        Button(`${this.labels().searchSourcesButtonPrefix}${this.checkedKeys.length}/${this.sources.length}`)
           .height(38)
           .enabled(this.sources.length > 0)
           .onClick(() => this.showSourcePicker = !this.showSourcePicker)
-        Button('快搜')
+        Button(this.labels().fastSearchButton)
           .height(38)
           .margin({ left: 10 })
           .onClick(() => router.pushUrl({ url: 'pages/FastSearch', params: { keyword: this.keyword } }))
@@ -133,13 +149,13 @@ struct SearchPage {
       .alignItems(VerticalAlign.Center)
 
       Row() {
-        TextInput({ text: this.keyword, placeholder: '输入搜索标题' })
+        TextInput({ text: this.keyword, placeholder: this.labels().searchInputPlaceholder })
           .height(50)
           .fontSize(17)
           .layoutWeight(1)
           .onChange((value: string) => this.keyword = value)
           .onSubmit(() => this.submitSearch())
-        Button(this.searching ? '搜索中' : '搜索')
+        Button(this.searching ? this.labels().searchingButton : this.labels().searchButton)
           .height(50)
           .margin({ left: 12 })
           .enabled(!this.searching)
@@ -150,17 +166,17 @@ struct SearchPage {
 
       Text(this.statusText)
         .fontSize(14)
-        .fontColor('#93a4b8')
+        .fontColor(this.theme().mutedText)
         .margin({ top: 10 })
         .width('100%')
 
       if (this.showSourcePicker) {
         Column() {
           Row() {
-            Text('参与搜索的数据源').fontSize(16).fontColor(Color.White).layoutWeight(1)
-            Button('全选').height(32).onClick(() => this.selectAllSources())
-            Button('全不选').height(32).margin({ left: 8 }).onClick(() => this.selectNoSources())
-            Text('关闭')
+            Text(this.labels().searchSourceTitle).fontSize(16).fontColor(this.theme().text).layoutWeight(1)
+            Button(this.labels().selectAll).height(32).onClick(() => this.selectAllSources())
+            Button(this.labels().selectNone).height(32).margin({ left: 8 }).onClick(() => this.selectNoSources())
+            Text(this.labels().close)
               .fontSize(14)
               .fontColor('#fca5a5')
               .margin({ left: 12 })
@@ -173,10 +189,10 @@ struct SearchPage {
             ForEach(this.sources, (source: SourceBean) => {
               Text(source.name)
                 .fontSize(13)
-                .fontColor(Color.White)
+                .fontColor(this.theme().text)
                 .padding({ left: 12, right: 12, top: 7, bottom: 7 })
                 .margin({ right: 8, top: 8 })
-                .backgroundColor(this.isChecked(source) ? '#2563eb' : '#1f2937')
+                .backgroundColor(this.isChecked(source) ? this.theme().primary : this.theme().panelBg)
                 .borderRadius(8)
                 .focusable(true)
                 .onClick(() => this.toggleSource(source))
@@ -187,14 +203,14 @@ struct SearchPage {
         .width('100%')
         .padding(14)
         .margin({ top: 12 })
-        .backgroundColor('#151d2b')
+        .backgroundColor(this.theme().cardBg)
         .borderRadius(12)
       }
 
       if (this.groups.length === 0) {
         Row() {
-          Text('搜索历史').fontSize(17).fontColor(Color.White).layoutWeight(1)
-          Text('清空')
+          Text(this.labels().searchHistory).fontSize(17).fontColor(this.theme().text).layoutWeight(1)
+          Text(this.labels().clear)
             .fontSize(14)
             .fontColor('#fca5a5')
             .focusable(true)
@@ -207,16 +223,16 @@ struct SearchPage {
         .margin({ top: 22 })
 
         if (this.histories.length === 0) {
-          Text('暂无搜索历史').fontSize(15).fontColor('#64748b').margin({ top: 12 }).width('100%')
+          Text(this.labels().emptySearchHistory).fontSize(15).fontColor(this.theme().subtleText).margin({ top: 12 }).width('100%')
         } else {
           Flex({ wrap: FlexWrap.Wrap }) {
             ForEach(this.histories, (item: SearchHistoryItem) => {
               Text(item.searchKeyWords)
                 .fontSize(15)
-                .fontColor(Color.White)
+                .fontColor(this.theme().text)
                 .padding({ left: 16, right: 16, top: 8, bottom: 8 })
                 .margin({ right: 10, top: 10 })
-                .backgroundColor('#1f2937')
+                .backgroundColor(this.theme().panelBg)
                 .borderRadius(18)
                 .focusable(true)
                 .onClick(() => {
@@ -237,11 +253,11 @@ struct SearchPage {
                   Text(group.source.name)
                     .fontSize(17)
                     .fontWeight(FontWeight.Medium)
-                    .fontColor(Color.White)
+                    .fontColor(this.theme().text)
                     .layoutWeight(1)
-                  Text(group.error !== undefined && group.error.length > 0 ? '失败' : `${group.result.list.length} 条`)
+                  Text(group.error !== undefined && group.error.length > 0 ? this.labels().failed : `${group.result.list.length}${this.labels().resultSuffix}`)
                     .fontSize(13)
-                    .fontColor(group.error !== undefined && group.error.length > 0 ? '#fca5a5' : '#93a4b8')
+                    .fontColor(group.error !== undefined && group.error.length > 0 ? '#fca5a5' : this.theme().mutedText)
                 }
                 .width('100%')
                 if (group.error !== undefined && group.error.length > 0) {
@@ -265,24 +281,24 @@ struct SearchPage {
                             .alt($r('app.media.app_icon'))
                         } else {
                           Column() {
-                            Text('无封面').fontSize(12).fontColor('#64748b')
+                            Text(this.labels().noCover).fontSize(12).fontColor(this.theme().subtleText)
                           }
                           .width('100%')
                           .height(150)
                           .borderRadius(8)
                           .justifyContent(FlexAlign.Center)
-                          .backgroundColor('#111827')
+                          .backgroundColor(this.theme().fieldBg)
                         }
                         Text(vod.name)
                           .fontSize(13)
-                          .fontColor(Color.White)
+                          .fontColor(this.theme().text)
                           .width('100%')
                           .margin({ top: 6 })
                           .maxLines(1)
                           .textOverflow({ overflow: TextOverflow.Ellipsis })
                         Text(vod.note === undefined ? '' : vod.note)
                           .fontSize(11)
-                          .fontColor('#93a4b8')
+                          .fontColor(this.theme().mutedText)
                           .width('100%')
                           .maxLines(1)
                           .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -299,13 +315,13 @@ struct SearchPage {
                     Row() {
                       Text(vod.name)
                         .fontSize(15)
-                        .fontColor(Color.White)
+                        .fontColor(this.theme().text)
                         .layoutWeight(1)
                         .maxLines(1)
                         .textOverflow({ overflow: TextOverflow.Ellipsis })
                       Text(`${vod.type === undefined || vod.type.length === 0 ? '' : vod.type} ${vod.note === undefined ? '' : vod.note}`)
                         .fontSize(12)
-                        .fontColor('#93a4b8')
+                        .fontColor(this.theme().mutedText)
                         .width(200)
                         .maxLines(1)
                         .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -321,7 +337,7 @@ struct SearchPage {
               }
               .width('100%')
               .padding(16)
-              .backgroundColor('#151d2b')
+              .backgroundColor(this.theme().cardBg)
               .borderRadius(14)
             }
             .margin({ top: 12 })
@@ -335,6 +351,6 @@ struct SearchPage {
     .width('100%')
     .height('100%')
     .padding({ left: 40, right: 40, top: 30, bottom: 24 })
-    .backgroundColor('#0b1020')
+    .backgroundColor(this.theme().pageBg)
   }
 }

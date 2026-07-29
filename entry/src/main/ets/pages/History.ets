@@ -3,6 +3,7 @@ import promptAction from '@ohos.promptAction';
 import { HawkConfig } from '../constants/HawkConfig';
 import { HomeNumValues } from '../constants/AppDefaults';
 import { VodInfo } from '../models/TvBoxModels';
+import { appearanceService, FeatureLabels, ThemePalette } from '../services/AppearanceService';
 import { settingsStore } from '../services/SettingsStore';
 import { vodDataStore } from '../services/VodDataStore';
 
@@ -11,6 +12,8 @@ import { vodDataStore } from '../services/VodDataStore';
 struct History {
   @State records: VodInfo[] = [];
   @State deleteMode: boolean = false;
+  @State themeSelect: number = 0;
+  @State localeSelect: number = 0;
 
   aboutToAppear(): void {
     this.initPage();
@@ -18,6 +21,9 @@ struct History {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await appearanceService.init();
+    this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
+    this.localeSelect = await settingsStore.get<number>(HawkConfig.HOME_LOCALE, 0);
     await this.refresh();
   }
 
@@ -67,7 +73,7 @@ struct History {
     vodDataStore.deleteVodRecordAll();
     this.deleteMode = false;
     this.refresh();
-    promptAction.showToast({ message: '已清空播放历史' });
+    promptAction.showToast({ message: this.labels().historyCleared });
   }
 
   progressText(item: VodInfo): string {
@@ -77,32 +83,41 @@ struct History {
       return '';
     }
     const percent = Math.floor((progress / duration) * 100);
-    return `已看 ${percent > 100 ? 100 : percent}%`;
+    return `${this.labels().watchedPrefix}${percent > 100 ? 100 : percent}%`;
+  }
+
+  theme(): ThemePalette {
+    return appearanceService.themeByIndex(this.themeSelect);
+  }
+
+  labels(): FeatureLabels {
+    appearanceService.setLocale(this.localeSelect);
+    return appearanceService.featureLabels();
   }
 
   build() {
     Column() {
       Row() {
-        Text('< 返回')
+        Text(this.labels().back)
           .fontSize(18)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .focusable(true)
           .onClick(() => router.back())
-        Text('历史')
+        Text(this.labels().historyTitle)
           .fontSize(26)
           .fontWeight(FontWeight.Bold)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .margin({ left: 20 })
           .layoutWeight(1)
-        Text(`${this.records.length} 条`)
+        Text(`${this.records.length}${this.labels().countSuffix}`)
           .fontSize(14)
-          .fontColor('#93a4b8')
+          .fontColor(this.theme().mutedText)
           .margin({ right: 12 })
-        Button(this.deleteMode ? '完成' : '删除')
+        Button(this.deleteMode ? this.labels().done : this.labels().delete)
           .height(38)
           .enabled(this.records.length > 0)
           .onClick(() => this.deleteMode = !this.deleteMode)
-        Button('清空')
+        Button(this.labels().clear)
           .height(38)
           .margin({ left: 10 })
           .enabled(this.records.length > 0)
@@ -112,7 +127,7 @@ struct History {
       .alignItems(VerticalAlign.Center)
 
       if (this.deleteMode) {
-        Text('删除模式：点击条目即可移除该条历史')
+        Text(this.labels().historyDeleteHint)
           .fontSize(13)
           .fontColor('#fbbf24')
           .margin({ top: 10 })
@@ -121,7 +136,7 @@ struct History {
 
       if (this.records.length === 0) {
         Column() {
-          Text('暂无播放历史').fontSize(17).fontColor('#d1d5db')
+          Text(this.labels().emptyHistory).fontSize(17).fontColor(this.theme().mutedText)
         }
         .width('100%')
         .layoutWeight(1)
@@ -142,20 +157,20 @@ struct History {
                 Column() {
                   Text(item.name)
                     .fontSize(18)
-                    .fontColor(Color.White)
+                    .fontColor(this.theme().text)
                     .width('100%')
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(`${item.playFlag || ''} ${item.playNote || ''}`)
                     .fontSize(14)
-                    .fontColor('#cbd5e1')
+                    .fontColor(this.theme().text)
                     .width('100%')
                     .margin({ top: 6 })
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(`${item.sourceKey || ''} ${this.progressText(item)}`)
                     .fontSize(12)
-                    .fontColor('#93a4b8')
+                    .fontColor(this.theme().mutedText)
                     .width('100%')
                     .margin({ top: 4 })
                 }
@@ -163,12 +178,12 @@ struct History {
                 .layoutWeight(1)
                 .margin({ left: 14 })
                 if (this.deleteMode) {
-                  Text('移除').fontSize(14).fontColor('#fca5a5')
+                  Text(this.labels().remove).fontSize(14).fontColor('#fca5a5')
                 }
               }
               .width('100%')
               .padding(14)
-              .backgroundColor(this.deleteMode ? '#2a1a1a' : '#111827')
+              .backgroundColor(this.deleteMode ? '#2a1a1a' : this.theme().fieldBg)
               .borderRadius(12)
               .focusable(true)
               .onClick(() => this.openRecord(item))
@@ -184,6 +199,6 @@ struct History {
     .width('100%')
     .height('100%')
     .padding({ left: 40, right: 40, top: 30, bottom: 24 })
-    .backgroundColor('#0b1020')
+    .backgroundColor(this.theme().pageBg)
   }
 }

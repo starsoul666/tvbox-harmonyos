@@ -398,3 +398,150 @@ real device or emulator run:
 - AVPlayer header injection against a Referer-protected source and a WebDAV Basic-auth file.
 - Audio/subtitle track enumeration (depends on the media container).
 - D-pad focus traversal on a TV form factor.
+
+## Theme and language parity slice
+
+Static implementation check after wiring Android-compatible `THEME_SELECT` / `HOME_LOCALE` into
+Home and Settings:
+
+```bash
+rg -n "Record<string, Object>|Object\[\]|\(item: Object\)|replaceAll|padStart|TODO|FIXME|Number\.parseInt|console\.log|implicitAny|any" entry/src/main/ets README.md docs/android-parity.md
+```
+
+Result: no matches.
+
+Build verification:
+
+```bash
+DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk ./scripts/verify-build.sh
+```
+
+Result:
+
+```text
+> hvigor BUILD SUCCESSFUL in 26 s 859 ms
+HAP output:
+entry/build/default/outputs/default/entry-default-unsigned.hap
+```
+
+Expected device replay:
+
+1. Open Settings, switch theme through all seven Android-compatible theme names, and confirm the
+   Settings screen recolors immediately.
+2. Switch language from Chinese to English and confirm Home/Settings primary labels and status
+   messages update after returning to Home or reopening Settings.
+3. Switch back to Chinese and confirm `theme_select` / `language` persist across app restart.
+
+## Theme coverage expansion
+
+Static implementation check after extending `THEME_SELECT` to Search, FastSearch, History,
+Favorites, and Push:
+
+```bash
+rg -n "Record<string, Object>|Object\[\]|\(item: Object\)|replaceAll|padStart|TODO|FIXME|Number\.parseInt|console\.log|implicitAny|\bany\b" entry/src/main/ets
+```
+
+Result: no matches.
+
+Build verification:
+
+```bash
+DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk ./scripts/verify-build.sh
+```
+
+Result:
+
+```text
+> hvigor BUILD SUCCESSFUL in 14 s 43 ms
+HAP output:
+entry/build/default/outputs/default/entry-default-unsigned.hap
+```
+
+Expected device replay: switch every theme in Settings, then open Search, FastSearch, History,
+Favorites, and Push from Home and confirm page background, cards, history chips, empty states, and
+primary/muted text colors follow the selected palette.
+
+## Theme coverage expansion 2
+
+Static implementation check after extending `THEME_SELECT` to Category, Detail, Drive, and Apps:
+
+```bash
+rg -n "Record<string, Object>|Object\[\]|\(item: Object\)|replaceAll|padStart|TODO|FIXME|Number\.parseInt|console\.log|implicitAny|\bany\b" entry/src/main/ets
+```
+
+Result: no matches.
+
+Build verification:
+
+```bash
+DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk ./scripts/verify-build.sh
+```
+
+Result:
+
+```text
+> hvigor BUILD SUCCESSFUL in 12 s 326 ms
+HAP output:
+entry/build/default/outputs/default/entry-default-unsigned.hap
+```
+
+Expected device replay: switch every theme in Settings, then open Category, Detail, Drive, and
+Apps from Home and confirm page background, cards, filter chips, detail episode groups, drive rows,
+and app launcher cards follow the selected palette.
+
+## Playback Theme Coverage
+
+Static implementation check after extending `THEME_SELECT` to Play and Live overlays:
+
+```bash
+rg -n "Record<string, Object>|Object\[\]|\(item: Object\)|replaceAll|padStart|TODO|FIXME|Number\.parseInt|console\.log|implicitAny|\bany\b" entry/src/main/ets
+```
+
+Result: no matches.
+
+Build verification:
+
+```bash
+DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk ./scripts/verify-build.sh
+```
+
+Result:
+
+```text
+> hvigor BUILD SUCCESSFUL in 32 s 582 ms
+HAP output:
+entry/build/default/outputs/default/entry-default-unsigned.hap
+```
+
+Expected device replay: switch every theme in Settings, then open Play and Live. Confirm the video
+surface remains black, while the playback controls, chips, sliders, live channel/group rows, EPG
+rows, and password dialog use the selected palette without losing contrast.
+
+## Feature Localization Expansion 1
+
+Static implementation check after extending `HOME_LOCALE` to Search, FastSearch, History,
+Favorites, and Push:
+
+```bash
+rg -n "Record<string, Object>|Object\[\]|\(item: Object\)|replaceAll|padStart|TODO|FIXME|Number\.parseInt|console\.log|implicitAny|\bany\b" entry/src/main/ets
+```
+
+Result: no matches.
+
+Build verification:
+
+```bash
+DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk ./scripts/verify-build.sh
+```
+
+Result:
+
+```text
+> hvigor BUILD SUCCESSFUL in 54 s 178 ms
+HAP output:
+entry/build/default/outputs/default/entry-default-unsigned.hap
+```
+
+Expected device replay: switch Settings language between Chinese and English, then open Search,
+FastSearch, History, Favorites, and Push. Confirm static labels, placeholders, empty states, status
+messages, delete-mode hints, counts, and toasts follow the selected language.

@@ -4,6 +4,7 @@ import { HomeNumValues } from '../constants/AppDefaults';
 import { MovieSort, SourceBean, VodInfo } from '../models/TvBoxModels';
 import { vodDataStore } from '../services/VodDataStore';
 import { apiConfigService } from '../services/ApiConfigService';
+import { appearanceService, HomeLabels, ThemePalette } from '../services/AppearanceService';
 import { settingsStore } from '../services/SettingsStore';
 import { sourceService } from '../services/SourceService';
 import { errorMessage } from '../utils/ErrorUtil';
@@ -17,8 +18,8 @@ interface HomeEntry {
 @Entry
 @Component
 struct Home {
-  @State sourceName: string = '未加载配置';
-  @State statusText: string = '等待配置地址';
+  @State sourceName: string = '';
+  @State statusText: string = '';
   @State contentStatus: string = '';
   @State contentLoading: boolean = false;
   @State sourceCount: number = 0;
@@ -27,16 +28,18 @@ struct Home {
   @State recommendations: VodInfo[] = [];
   @State homeRec: number = 1;
   @State showSource: boolean = true;
+  @State themeSelect: number = 0;
+  @State homeLocale: number = 0;
   @State entries: HomeEntry[] = [
-    { title: '直播', page: 'pages/Live', desc: 'LivePlayActivity' },
-    { title: '搜索', page: 'pages/Search', desc: 'SearchActivity' },
-    { title: '快搜', page: 'pages/FastSearch', desc: 'FastSearchActivity' },
-    { title: '历史', page: 'pages/History', desc: 'HistoryActivity' },
-    { title: '收藏', page: 'pages/Favorites', desc: 'CollectActivity' },
-    { title: '推送', page: 'pages/Push', desc: 'PushActivity' },
-    { title: '网盘', page: 'pages/Drive', desc: 'DriveActivity' },
-    { title: '应用', page: 'pages/Apps', desc: 'AppsActivity' },
-    { title: '设置', page: 'pages/Settings', desc: 'SettingActivity' }
+    { title: 'live', page: 'pages/Live', desc: 'LivePlayActivity' },
+    { title: 'search', page: 'pages/Search', desc: 'SearchActivity' },
+    { title: 'fastSearch', page: 'pages/FastSearch', desc: 'FastSearchActivity' },
+    { title: 'history', page: 'pages/History', desc: 'HistoryActivity' },
+    { title: 'favorites', page: 'pages/Favorites', desc: 'CollectActivity' },
+    { title: 'push', page: 'pages/Push', desc: 'PushActivity' },
+    { title: 'drive', page: 'pages/Drive', desc: 'DriveActivity' },
+    { title: 'apps', page: 'pages/Apps', desc: 'AppsActivity' },
+    { title: 'settings', page: 'pages/Settings', desc: 'SettingActivity' }
   ];
 
   aboutToAppear(): void {
@@ -45,8 +48,13 @@ struct Home {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await appearanceService.init();
     this.homeRec = await settingsStore.get<number>(HawkConfig.HOME_REC, 1);
     this.showSource = await settingsStore.get<boolean>(HawkConfig.HOME_SHOW_SOURCE, true);
+    this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
+    this.homeLocale = await settingsStore.get<number>(HawkConfig.HOME_LOCALE, 0);
+    appearanceService.setTheme(this.themeSelect);
+    appearanceService.setLocale(this.homeLocale);
     // Android `HOME_DEFAULT_SHOW`: jump straight into live playback on launch.
     if (await settingsStore.get<boolean>(HawkConfig.HOME_DEFAULT_SHOW, false)) {
       router.pushUrl({ url: 'pages/Live' });
@@ -54,10 +62,10 @@ struct Home {
     const apiUrl = await settingsStore.get<string>(HawkConfig.API_URL, '');
     if (apiUrl && Object.keys(apiConfigService.state.sourceBeanList).length === 0) {
       try {
-        this.statusText = '正在加载配置...';
+        this.statusText = this.labels().loadingConfig;
         await apiConfigService.loadConfigFromSettings(true);
       } catch (error) {
-        this.statusText = `配置加载失败：${JSON.stringify(error)}`;
+        this.statusText = `${this.labels().configLoadFailedPrefix}${JSON.stringify(error)}`;
       }
     }
     this.refreshConfigSummary();
@@ -69,8 +77,46 @@ struct Home {
     const sources: SourceBean[] = Object.keys(state.sourceBeanList).map((key: string) => state.sourceBeanList[key]);
     this.sources = sources.filter((source: SourceBean) => source.hide === 0);
     this.sourceCount = sources.length;
-    this.sourceName = state.homeSource?.name || '未加载配置';
-    this.statusText = sources.length > 0 ? `已解析 ${sources.length} 个数据源` : '进入设置填写配置地址后加载';
+    const labels = this.labels();
+    this.sourceName = state.homeSource?.name || labels.unloadedConfig;
+    this.statusText = sources.length > 0
+      ? `${labels.configReadyPrefix}${sources.length}${labels.configReadySuffix}`
+      : labels.configEmpty;
+  }
+
+  theme(): ThemePalette {
+    return appearanceService.themeByIndex(this.themeSelect);
+  }
+
+  labels(): HomeLabels {
+    appearanceService.setLocale(this.homeLocale);
+    return appearanceService.homeLabels();
+  }
+
+  entryTitle(key: string): string {
+    const labels = this.labels();
+    switch (key) {
+      case 'live':
+        return labels.live;
+      case 'search':
+        return labels.search;
+      case 'fastSearch':
+        return labels.fastSearch;
+      case 'history':
+        return labels.history;
+      case 'favorites':
+        return labels.favorites;
+      case 'push':
+        return labels.push;
+      case 'drive':
+        return labels.drive;
+      case 'apps':
+        return labels.apps;
+      case 'settings':
+        return labels.settings;
+      default:
+        return key;
+    }
   }
 
   open(page: string): void {
@@ -92,11 +138,12 @@ struct Home {
       return;
     }
     if (source.type !== 0 && source.type !== 1 && source.type !== 4) {
-      this.contentStatus = `当前源 ${source.name} 为 type=${source.type}，首页内容待 Spider 迁移`;
+      const labels = this.labels();
+      this.contentStatus = `${labels.spiderPendingPrefix}${source.name}${labels.spiderPendingMiddle}${source.type}${labels.spiderPendingSuffix}`;
       return;
     }
     this.contentLoading = true;
-    this.contentStatus = `正在加载首页内容：${source.name}`;
+    this.contentStatus = `${this.labels().loadingHomePrefix}${source.name}`;
     try {
       const content = await sourceService.getHomeContent(source);
       this.categories = content.classes;
@@ -107,13 +154,15 @@ struct Home {
           ? HomeNumValues[limitIndex]
           : HomeNumValues[0];
         this.recommendations = vodDataStore.getAllVodRecord(limit);
-        this.contentStatus = `首页分类 ${content.classes.length} 个，历史 ${this.recommendations.length} 条`;
+        const labels = this.labels();
+        this.contentStatus = `${labels.homeCategoryPrefix}${content.classes.length}${labels.homeCategoryMiddleHistory}${this.recommendations.length}${labels.homeCategorySuffix}`;
       } else {
         this.recommendations = content.list;
-        this.contentStatus = `首页分类 ${content.classes.length} 个，推荐 ${content.list.length} 条`;
+        const labels = this.labels();
+        this.contentStatus = `${labels.homeCategoryPrefix}${content.classes.length}${labels.homeCategoryMiddleRecommend}${content.list.length}${labels.homeCategorySuffix}`;
       }
     } catch (error) {
-      this.contentStatus = `首页内容加载失败：${errorMessage(error)}`;
+      this.contentStatus = `${this.labels().homeContentFailedPrefix}${errorMessage(error)}`;
     } finally {
       this.contentLoading = false;
     }
@@ -155,22 +204,22 @@ struct Home {
           Text('TVBox')
             .fontSize(34)
             .fontWeight(FontWeight.Bold)
-            .fontColor(Color.White)
+            .fontColor(this.theme().text)
           Text(this.statusText)
             .fontSize(16)
-            .fontColor('#aab2c0')
+            .fontColor(this.theme().mutedText)
             .margin({ top: 8 })
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
 
         Column() {
-          Text('当前源')
+          Text(this.labels().currentSource)
             .fontSize(14)
-            .fontColor('#aab2c0')
+            .fontColor(this.theme().mutedText)
           Text(this.sourceName)
             .fontSize(18)
-            .fontColor(Color.White)
+            .fontColor(this.theme().text)
             .fontWeight(FontWeight.Medium)
             .margin({ top: 4 })
         }
@@ -183,13 +232,13 @@ struct Home {
         ForEach(this.entries, (entry: HomeEntry) => {
           GridItem() {
             Column() {
-              Text(entry.title)
+              Text(this.entryTitle(entry.title))
                 .fontSize(24)
                 .fontWeight(FontWeight.Bold)
-                .fontColor(Color.White)
+                .fontColor(this.theme().text)
               Text(entry.desc)
                 .fontSize(13)
-                .fontColor('#93a4b8')
+                .fontColor(this.theme().mutedText)
                 .margin({ top: 10 })
             }
             .width('100%')
@@ -197,7 +246,7 @@ struct Home {
             .justifyContent(FlexAlign.Center)
             .alignItems(HorizontalAlign.Center)
             .borderRadius(18)
-            .backgroundColor('#1f2937')
+            .backgroundColor(this.theme().panelBg)
             .focusable(true)
             .onClick(() => this.open(entry.page))
           }
@@ -212,13 +261,13 @@ struct Home {
         Column() {
           if (this.contentStatus.length > 0) {
             Row() {
-              Text('首页内容')
+              Text(this.labels().homeContent)
                 .fontSize(22)
                 .fontWeight(FontWeight.Bold)
-                .fontColor(Color.White)
-              Text(this.contentLoading ? '加载中' : this.contentStatus)
+                .fontColor(this.theme().text)
+              Text(this.contentLoading ? this.labels().loading : this.contentStatus)
                 .fontSize(14)
-                .fontColor('#93a4b8')
+                .fontColor(this.theme().mutedText)
                 .margin({ left: 12 })
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -233,10 +282,10 @@ struct Home {
                 ForEach(this.categories, (category: MovieSort) => {
                   Text(category.sortName)
                     .fontSize(15)
-                    .fontColor(Color.White)
+                    .fontColor(this.theme().text)
                     .padding({ left: 14, right: 14, top: 8, bottom: 8 })
                     .margin({ right: 10 })
-                    .backgroundColor('#1f2937')
+                    .backgroundColor(this.theme().panelBg)
                     .borderRadius(16)
                     .focusable(true)
                     .onClick(() => this.openCategory(category))
@@ -255,19 +304,19 @@ struct Home {
                   Row() {
                     Text(vod.name)
                       .fontSize(16)
-                      .fontColor(Color.White)
+                      .fontColor(this.theme().text)
                       .layoutWeight(1)
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis })
                     Text(vod.note === undefined ? '' : vod.note)
                       .fontSize(12)
-                      .fontColor('#93a4b8')
+                      .fontColor(this.theme().mutedText)
                       .width(160)
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis })
                   }
                   .padding({ left: 14, right: 14, top: 10, bottom: 10 })
-                  .backgroundColor('#111827')
+                  .backgroundColor(this.theme().fieldBg)
                   .borderRadius(10)
                   .onClick(() => this.openVod(vod))
                 }.margin({ top: 8 })
@@ -278,13 +327,13 @@ struct Home {
           }
 
           Row() {
-            Text('数据源')
+            Text(this.labels().dataSources)
               .fontSize(22)
               .fontWeight(FontWeight.Bold)
-              .fontColor(Color.White)
-            Text(`${this.sources.length} 个可见源`)
+              .fontColor(this.theme().text)
+            Text(`${this.sources.length}${this.labels().visibleSourceSuffix}`)
               .fontSize(14)
-              .fontColor('#93a4b8')
+              .fontColor(this.theme().mutedText)
               .margin({ left: 12 })
           }
           .width('100%')
@@ -297,17 +346,17 @@ struct Home {
                 Row() {
                   Text(source.name)
                     .fontSize(17)
-                    .fontColor(Color.White)
+                    .fontColor(this.theme().text)
                     .layoutWeight(1)
                   Text(source.api)
                     .fontSize(12)
-                    .fontColor('#93a4b8')
+                    .fontColor(this.theme().mutedText)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                     .width('50%')
                 }
                 .padding({ left: 16, right: 16, top: 12, bottom: 12 })
-                .backgroundColor(source.key === apiConfigService.state.homeSource?.key ? '#334155' : '#151d2b')
+                .backgroundColor(source.key === apiConfigService.state.homeSource?.key ? this.theme().cardActiveBg : this.theme().cardBg)
                 .borderRadius(12)
                 .focusable(true)
                 .onClick(() => {
@@ -328,6 +377,6 @@ struct Home {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#0b1020')
+    .backgroundColor(this.theme().pageBg)
   }
 }

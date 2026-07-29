@@ -1,8 +1,10 @@
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
+import { HawkConfig } from '../constants/HawkConfig';
 import { visibleOrder, toSourceIndex } from '../domain/playback/PlaybackOrder';
 import { SourceBean, SourceSearchResult, VodInfo, VodSeries, VodSeriesFlag } from '../models/TvBoxModels';
 import { apiConfigService } from '../services/ApiConfigService';
+import { appearanceService, ThemePalette } from '../services/AppearanceService';
 import { settingsStore } from '../services/SettingsStore';
 import { sourceService } from '../services/SourceService';
 import { vodDataStore } from '../services/VodDataStore';
@@ -42,6 +44,7 @@ struct Detail {
   @State searchingSources: boolean = false;
   @State showCandidates: boolean = false;
   @State lastPlayIndex: number = -1;
+  @State themeSelect: number = 0;
 
   aboutToAppear(): void {
     this.initPage();
@@ -49,6 +52,8 @@ struct Detail {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await appearanceService.init();
+    this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
     const rawParams = router.getParams();
     const params = rawParams === undefined ? {} as Record<string, string> : rawParams as Record<string, string>;
     this.sourceKey = params['sourceKey'] === undefined ? '' : String(params['sourceKey']);
@@ -269,22 +274,26 @@ struct Detail {
     return value === undefined || value.length === 0 ? fallback : value;
   }
 
+  theme(): ThemePalette {
+    return appearanceService.themeByIndex(this.themeSelect);
+  }
+
   build() {
     Column() {
       Row() {
         Text('< 返回')
           .fontSize(18)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .focusable(true)
           .onClick(() => router.back())
         Text('详情')
           .fontSize(26)
           .fontWeight(FontWeight.Bold)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .margin({ left: 20 })
         Text(this.sourceName)
           .fontSize(14)
-          .fontColor('#60a5fa')
+          .fontColor(this.theme().primarySoft)
           .margin({ left: 12 })
           .layoutWeight(1)
           .maxLines(1)
@@ -309,7 +318,7 @@ struct Detail {
 
       Text(this.statusText)
         .fontSize(14)
-        .fontColor('#93a4b8')
+        .fontColor(this.theme().mutedText)
         .margin({ top: 12 })
         .width('100%')
         .maxLines(1)
@@ -320,7 +329,7 @@ struct Detail {
           Row() {
             Text(`换源结果 ${this.candidates.length}`)
               .fontSize(16)
-              .fontColor(Color.White)
+              .fontColor(this.theme().text)
               .layoutWeight(1)
             Text('关闭')
               .fontSize(14)
@@ -335,19 +344,19 @@ struct Detail {
                 Row() {
                   Text(candidate.sourceName)
                     .fontSize(14)
-                    .fontColor('#60a5fa')
+                    .fontColor(this.theme().primarySoft)
                     .width(140)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(candidate.vodName)
                     .fontSize(14)
-                    .fontColor(Color.White)
+                    .fontColor(this.theme().text)
                     .layoutWeight(1)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(candidate.note)
                     .fontSize(12)
-                    .fontColor('#93a4b8')
+                    .fontColor(this.theme().mutedText)
                     .width(120)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -365,21 +374,21 @@ struct Detail {
         .width('100%')
         .padding(14)
         .margin({ top: 12 })
-        .backgroundColor('#151d2b')
+        .backgroundColor(this.theme().cardBg)
         .borderRadius(12)
       }
 
       if (this.loading) {
         Column() {
-          LoadingProgress().width(48).height(48).color('#60a5fa')
-          Text('加载中...').fontSize(16).fontColor('#d1d5db').margin({ top: 12 })
+          LoadingProgress().width(48).height(48).color(this.theme().primarySoft)
+          Text('加载中...').fontSize(16).fontColor(this.theme().mutedText).margin({ top: 12 })
         }
         .width('100%')
         .layoutWeight(1)
         .justifyContent(FlexAlign.Center)
       } else if (this.vod === null) {
         Column() {
-          Text('暂无详情数据').fontSize(18).fontColor('#d1d5db')
+          Text('暂无详情数据').fontSize(18).fontColor(this.theme().mutedText)
         }
         .width('100%')
         .layoutWeight(1)
@@ -397,38 +406,38 @@ struct Detail {
                   .alt($r('app.media.app_icon'))
               } else {
                 Column() {
-                  Text('无封面').fontSize(16).fontColor('#93a4b8')
+                  Text('无封面').fontSize(16).fontColor(this.theme().mutedText)
                 }
                 .width(150)
                 .height(210)
                 .borderRadius(10)
                 .justifyContent(FlexAlign.Center)
-                .backgroundColor('#111827')
+                .backgroundColor(this.theme().fieldBg)
               }
               Column() {
                 Text(this.vod.name)
                   .fontSize(28)
                   .fontWeight(FontWeight.Bold)
-                  .fontColor(Color.White)
+                  .fontColor(this.theme().text)
                   .maxLines(2)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                 Text(`${this.valueOr(this.vod.type, '未知类型')} ${this.vod.year === undefined ? '' : this.vod.year} ${this.valueOrEmpty(this.vod.area)}`)
                   .fontSize(15)
-                  .fontColor('#93a4b8')
+                  .fontColor(this.theme().mutedText)
                   .margin({ top: 12 })
                 Text(this.valueOrEmpty(this.vod.note))
                   .fontSize(15)
-                  .fontColor('#d1d5db')
+                  .fontColor(this.theme().text)
                   .margin({ top: 8 })
                 Text(`导演：${this.valueOrEmpty(this.vod.director)}`)
                   .fontSize(14)
-                  .fontColor('#d1d5db')
+                  .fontColor(this.theme().text)
                   .margin({ top: 12 })
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                 Text(`主演：${this.valueOrEmpty(this.vod.actor)}`)
                   .fontSize(14)
-                  .fontColor('#d1d5db')
+                  .fontColor(this.theme().text)
                   .margin({ top: 6 })
                   .maxLines(2)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -441,7 +450,7 @@ struct Detail {
 
             Text(this.valueOr(this.vod.des, '暂无简介'))
               .fontSize(15)
-              .fontColor('#d1d5db')
+              .fontColor(this.theme().text)
               .lineHeight(24)
               .margin({ top: 20 })
               .width('100%')
@@ -454,11 +463,11 @@ struct Detail {
               Text('播放列表')
                 .fontSize(20)
                 .fontWeight(FontWeight.Bold)
-                .fontColor(Color.White)
+                .fontColor(this.theme().text)
                 .layoutWeight(1)
               Text(`${this.currentSeries().length} 集`)
                 .fontSize(14)
-                .fontColor('#93a4b8')
+                .fontColor(this.theme().mutedText)
                 .margin({ right: 12 })
               Button(this.reverseSort ? '正序' : '倒序')
                 .height(34)
@@ -472,7 +481,7 @@ struct Detail {
             if (this.vod.seriesFlags.length === 0) {
               Text('暂无播放地址')
                 .fontSize(16)
-                .fontColor('#93a4b8')
+                .fontColor(this.theme().mutedText)
                 .margin({ top: 12 })
                 .width('100%')
             } else {
@@ -481,10 +490,10 @@ struct Detail {
                   ForEach(this.vod.seriesFlags, (flag: VodSeriesFlag, index: number) => {
                     Text(flag.name)
                       .fontSize(14)
-                      .fontColor(Color.White)
+                      .fontColor(this.theme().text)
                       .padding({ left: 14, right: 14, top: 8, bottom: 8 })
                       .margin({ right: 10 })
-                      .backgroundColor(this.flagIndex === index ? '#2563eb' : '#1f2937')
+                      .backgroundColor(this.flagIndex === index ? this.theme().primary : this.theme().panelBg)
                       .borderRadius(8)
                       .focusable(true)
                       .onClick(() => this.flagIndex = index)
@@ -499,10 +508,10 @@ struct Detail {
                 ForEach(this.visibleSeries(), (episode: VodSeries, index: number) => {
                   Text(episode.name)
                     .fontSize(14)
-                    .fontColor(this.isLastPlayed(index) ? '#fbbf24' : Color.White)
+                    .fontColor(this.isLastPlayed(index) ? '#fbbf24' : this.theme().text)
                     .padding({ left: 14, right: 14, top: 8, bottom: 8 })
                     .margin({ right: 10, top: 10 })
-                    .backgroundColor(this.isLastPlayed(index) ? '#3f3517' : '#1f2937')
+                    .backgroundColor(this.isLastPlayed(index) ? '#3f3517' : this.theme().panelBg)
                     .borderRadius(8)
                     .focusable(true)
                     .onClick(() => this.openPlay(index))
@@ -523,6 +532,6 @@ struct Detail {
     .width('100%')
     .height('100%')
     .padding({ left: 40, right: 40, top: 30, bottom: 20 })
-    .backgroundColor('#0b1020')
+    .backgroundColor(this.theme().pageBg)
   }
 }

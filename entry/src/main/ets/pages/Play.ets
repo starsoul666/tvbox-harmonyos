@@ -8,6 +8,7 @@ import { PlayerConfig } from '../domain/playback/PlayerConfig';
 import { nextEpisodeIndex, previousEpisodeIndex } from '../domain/playback/PlaybackOrder';
 import { ParseBean, VodInfo, VodSeries } from '../models/TvBoxModels';
 import { apiConfigService } from '../services/ApiConfigService';
+import { appearanceService, ThemePalette } from '../services/AppearanceService';
 import { PlaybackResolveResult, playbackService } from '../services/PlaybackService';
 import { settingsStore } from '../services/SettingsStore';
 import { vodDataStore } from '../services/VodDataStore';
@@ -55,6 +56,7 @@ struct Play {
   @State subtitleTracks: MediaTrack[] = [];
   @State selectedAudioTrack: number = -1;
   @State selectedSubtitleTrack: number = -1;
+  @State themeSelect: number = 0;
 
   aboutToAppear(): void {
     this.bindSession();
@@ -103,6 +105,8 @@ struct Play {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await appearanceService.init();
+    this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
     await this.ensureConfigLoaded();
     const rawParams = router.getParams();
     const params = rawParams === undefined ? {} as Record<string, string> : rawParams as Record<string, string>;
@@ -497,6 +501,10 @@ struct Play {
     this.showControls();
   }
 
+  theme(): ThemePalette {
+    return appearanceService.themeByIndex(this.themeSelect);
+  }
+
   /** Android `VodController` D-pad mapping: left/right seek, up/down episode, OK play/pause. */
   handleKey(event: KeyEvent): void {
     if (event.type !== KeyType.Down) {
@@ -526,10 +534,10 @@ struct Play {
   chip(label: string, active: boolean, action: () => void) {
     Text(label)
       .fontSize(13)
-      .fontColor(Color.White)
+      .fontColor(this.theme().text)
       .padding({ left: 12, right: 12, top: 7, bottom: 7 })
       .margin({ right: 8, top: 8 })
-      .backgroundColor(active ? '#2563eb' : '#1f2937')
+      .backgroundColor(active ? this.theme().primary : this.theme().panelBg)
       .borderRadius(8)
       .focusable(true)
       .onClick(action)
@@ -553,14 +561,14 @@ struct Play {
       } else if (this.panel === 'skip') {
         Column() {
           Row() {
-            Text(`跳过片头 ${this.skipStartSeconds}s`).fontSize(14).fontColor(Color.White).layoutWeight(1)
+            Text(`跳过片头 ${this.skipStartSeconds}s`).fontSize(14).fontColor(this.theme().text).layoutWeight(1)
             Button('-30').height(34).onClick(() => this.setSkipStart(this.skipStartSeconds - 30))
             Button('+30').height(34).margin({ left: 8 }).onClick(() => this.setSkipStart(this.skipStartSeconds + 30))
             Button('设为当前').height(34).margin({ left: 8 })
               .onClick(() => this.setSkipStart(Math.floor(this.currentTimeMs / 1000)))
           }.width('100%').alignItems(VerticalAlign.Center)
           Row() {
-            Text(`跳过片尾 ${this.skipEndSeconds}s`).fontSize(14).fontColor(Color.White).layoutWeight(1)
+            Text(`跳过片尾 ${this.skipEndSeconds}s`).fontSize(14).fontColor(this.theme().text).layoutWeight(1)
             Button('-30').height(34).onClick(() => this.setSkipEnd(this.skipEndSeconds - 30))
             Button('+30').height(34).margin({ left: 8 }).onClick(() => this.setSkipEnd(this.skipEndSeconds + 30))
             Button('设为剩余').height(34).margin({ left: 8 })
@@ -569,9 +577,9 @@ struct Play {
         }.width('100%')
       } else if (this.panel === 'track') {
         Column() {
-          Text('音轨').fontSize(14).fontColor('#93a4b8').width('100%')
+          Text('音轨').fontSize(14).fontColor(this.theme().mutedText).width('100%')
           if (this.audioTracks.length === 0) {
-            Text('无可选音轨').fontSize(13).fontColor('#64748b').width('100%').margin({ top: 6 })
+            Text('无可选音轨').fontSize(13).fontColor(this.theme().subtleText).width('100%').margin({ top: 6 })
           } else {
             Flex({ wrap: FlexWrap.Wrap }) {
               ForEach(this.audioTracks, (track: MediaTrack) => {
@@ -579,9 +587,9 @@ struct Play {
               }, (track: MediaTrack) => `audio-${track.index}`)
             }
           }
-          Text('字幕').fontSize(14).fontColor('#93a4b8').width('100%').margin({ top: 12 })
+          Text('字幕').fontSize(14).fontColor(this.theme().mutedText).width('100%').margin({ top: 12 })
           if (this.subtitleTracks.length === 0) {
-            Text('无可选字幕').fontSize(13).fontColor('#64748b').width('100%').margin({ top: 6 })
+            Text('无可选字幕').fontSize(13).fontColor(this.theme().subtleText).width('100%').margin({ top: 6 })
           } else {
             Flex({ wrap: FlexWrap.Wrap }) {
               ForEach(this.subtitleTracks, (track: MediaTrack) => {
@@ -622,7 +630,7 @@ struct Play {
           Text(this.resolving ? '正在解析播放地址' : '无播放地址')
             .fontSize(30)
             .fontWeight(FontWeight.Bold)
-            .fontColor(Color.White)
+            .fontColor(this.theme().text)
           Text(this.errorText.length > 0 ? this.errorText : this.rawUrl)
             .fontSize(16)
             .fontColor('#fca5a5')
@@ -641,19 +649,19 @@ struct Play {
           Row() {
             Text('< 返回')
               .fontSize(18)
-              .fontColor(Color.White)
+              .fontColor(this.theme().text)
               .focusable(true)
               .onClick(() => router.back())
             Column() {
               Text(this.title)
                 .fontSize(22)
                 .fontWeight(FontWeight.Bold)
-                .fontColor(Color.White)
+                .fontColor(this.theme().text)
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
               Text(`${this.playFlag} ${this.episodeName}`)
                 .fontSize(14)
-                .fontColor('#cbd5e1')
+                .fontColor(this.theme().text)
                 .margin({ top: 4 })
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -663,7 +671,7 @@ struct Play {
             .margin({ left: 24 })
             Text(this.statusText)
               .fontSize(14)
-              .fontColor(this.errorText.length > 0 ? '#fca5a5' : '#93c5fd')
+              .fontColor(this.errorText.length > 0 ? '#fca5a5' : this.theme().primarySoft)
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
           }
@@ -673,7 +681,7 @@ struct Play {
           if (this.parseStatus.length > 0 || this.parseWarning.length > 0) {
             Text(this.parseWarning.length > 0 ? `${this.parseStatus}（${this.parseWarning}）` : this.parseStatus)
               .fontSize(13)
-              .fontColor(this.parseWarning.length > 0 ? '#fbbf24' : '#cbd5e1')
+              .fontColor(this.parseWarning.length > 0 ? '#fbbf24' : this.theme().text)
               .margin({ top: 10 })
               .width('100%')
               .maxLines(2)
@@ -687,7 +695,7 @@ struct Play {
           Row() {
             Text(this.formatTime(this.currentTimeMs))
               .fontSize(14)
-              .fontColor('#e5e7eb')
+              .fontColor(this.theme().text)
             Slider({
               value: this.currentTimeMs,
               min: 0,
@@ -696,8 +704,8 @@ struct Play {
             })
               .layoutWeight(1)
               .margin({ left: 14, right: 14 })
-              .selectedColor('#60a5fa')
-              .trackColor('#334155')
+              .selectedColor(this.theme().primarySoft)
+              .trackColor(this.theme().cardActiveBg)
               .blockColor(Color.White)
               .onChange((value: number, mode: SliderChangeMode) => {
                 this.currentTimeMs = value;
@@ -707,7 +715,7 @@ struct Play {
               })
             Text(this.formatTime(this.durationMs))
               .fontSize(14)
-              .fontColor('#e5e7eb')
+              .fontColor(this.theme().text)
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)

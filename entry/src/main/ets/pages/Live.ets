@@ -9,6 +9,7 @@ import { liveHeaderService, LiveHeaderMatch } from '../services/LiveHeaderServic
 import { PlayerSurface } from '../components/player/PlayerSurface';
 import { MediaSourceRequest } from '../domain/playback/PlaybackModels';
 import { PlaybackSession } from '../domain/playback/PlaybackSession';
+import { appearanceService, ThemePalette } from '../services/AppearanceService';
 import { settingsStore } from '../services/SettingsStore';
 import { errorMessage } from '../utils/ErrorUtil';
 
@@ -66,6 +67,7 @@ struct Live {
   @State liveShowTime: boolean = false;
   @State liveShowNetSpeed: boolean = false;
   @State clockText: string = '';
+  @State themeSelect: number = 0;
 
   aboutToAppear(): void {
     this.bindSession();
@@ -97,6 +99,8 @@ struct Live {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await appearanceService.init();
+    this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
     await epgAliasService.init(getContext(this).resourceManager);
     this.liveChannelReverse = await settingsStore.get<boolean>(HawkConfig.LIVE_CHANNEL_REVERSE, false);
     this.liveCrossGroup = await settingsStore.get<boolean>(HawkConfig.LIVE_CROSS_GROUP, false);
@@ -678,7 +682,11 @@ struct Live {
     if (this.timeShiftProgramIndex === program.index && this.timeShiftDateText === this.epgDateText) {
       return '#064e3b';
     }
-    return program.isCurrent ? '#3f2e08' : '#1f2937';
+    return program.isCurrent ? '#3f2e08' : this.theme().panelBg;
+  }
+
+  theme(): ThemePalette {
+    return appearanceService.themeByIndex(this.themeSelect);
   }
 
 
@@ -696,10 +704,10 @@ struct Live {
           Text(this.loading ? '正在加载直播频道' : '无直播播放地址')
             .fontSize(30)
             .fontWeight(FontWeight.Bold)
-            .fontColor(Color.White)
+            .fontColor(this.theme().text)
           Text(this.errorText.length > 0 ? this.errorText : '请确认配置中的 lives 或设置中的 LIVE_URL')
             .fontSize(16)
-            .fontColor(this.errorText.length > 0 ? '#fca5a5' : '#cbd5e1')
+            .fontColor(this.errorText.length > 0 ? '#fca5a5' : this.theme().text)
             .margin({ top: 12 })
         }
         .width('100%')
@@ -713,7 +721,7 @@ struct Live {
           Row() {
             Text('< 返回')
               .fontSize(18)
-              .fontColor(Color.White)
+              .fontColor(this.theme().text)
               .onClick(() => router.back())
             if (this.currentLogoUrl.length > 0) {
               Image(this.currentLogoUrl)
@@ -726,12 +734,12 @@ struct Live {
               Text(this.channelName.length > 0 ? this.channelName : '直播')
                 .fontSize(24)
                 .fontWeight(FontWeight.Bold)
-                .fontColor(Color.White)
+                .fontColor(this.theme().text)
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
               Text(this.statusText)
                 .fontSize(14)
-                .fontColor(this.errorText.length > 0 ? '#fca5a5' : '#cbd5e1')
+                .fontColor(this.errorText.length > 0 ? '#fca5a5' : this.theme().text)
                 .margin({ top: 4 })
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -742,7 +750,7 @@ struct Live {
               Text(this.clockText)
                 .fontSize(20)
                 .fontWeight(FontWeight.Medium)
-                .fontColor(Color.White)
+                .fontColor(this.theme().text)
                 .margin({ left: 16 })
             }
           }
@@ -790,12 +798,12 @@ struct Live {
           Row() {
             Button(`反向换台：${this.liveChannelReverse ? '开' : '关'}`)
               .height(34)
-              .backgroundColor(this.liveChannelReverse ? '#2563eb' : '#374151')
+              .backgroundColor(this.liveChannelReverse ? this.theme().primary : this.theme().cardActiveBg)
               .onClick(() => this.toggleLiveChannelReverse())
             Button(`跨组换台：${this.liveCrossGroup ? '开' : '关'}`)
               .height(34)
               .margin({ left: 10 })
-              .backgroundColor(this.liveCrossGroup ? '#2563eb' : '#374151')
+              .backgroundColor(this.liveCrossGroup ? this.theme().primary : this.theme().cardActiveBg)
               .onClick(() => this.toggleLiveCrossGroup())
           }
           .margin({ top: 10 })
@@ -817,7 +825,7 @@ struct Live {
           if (this.epgUrl.length > 0) {
             Text(`EPG：${this.epgUrl}`)
               .fontSize(12)
-              .fontColor('#93a4b8')
+              .fontColor(this.theme().mutedText)
               .margin({ top: 10 })
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -835,7 +843,7 @@ struct Live {
           if (this.liveHeaderNotice.length > 0) {
             Text(this.liveHeaderNotice)
               .fontSize(12)
-              .fontColor('#93a4b8')
+              .fontColor(this.theme().mutedText)
               .margin({ top: 8 })
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -845,7 +853,7 @@ struct Live {
             Row() {
               Text(this.epgStatus)
                 .fontSize(14)
-                .fontColor(this.epgStatus.startsWith('EPG 加载失败') ? '#fca5a5' : '#cbd5e1')
+                .fontColor(this.epgStatus.startsWith('EPG 加载失败') ? '#fca5a5' : this.theme().text)
                 .layoutWeight(1)
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -873,11 +881,11 @@ struct Live {
                     Row() {
                       Text(`${program.start}-${program.end}`)
                         .fontSize(12)
-                        .fontColor(program.isCurrent ? '#fbbf24' : '#93a4b8')
+                        .fontColor(program.isCurrent ? '#fbbf24' : this.theme().mutedText)
                         .width(92)
                       Text(program.title)
                         .fontSize(13)
-                        .fontColor(program.isCurrent ? '#fbbf24' : Color.White)
+                        .fontColor(program.isCurrent ? '#fbbf24' : this.theme().text)
                         .layoutWeight(1)
                         .maxLines(1)
                         .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -912,7 +920,7 @@ struct Live {
         Column() {
           Text('分组')
             .fontSize(16)
-            .fontColor('#cbd5e1')
+            .fontColor(this.theme().text)
             .margin({ bottom: 10 })
           Scroll() {
             Column() {
@@ -920,11 +928,11 @@ struct Live {
                 Text(`${group.groupName}${group.groupPassword === undefined || group.groupPassword.length === 0 ? '' : ' *'}`)
                   .width('100%')
                   .fontSize(15)
-                  .fontColor(Color.White)
+                  .fontColor(this.theme().text)
                   .padding({ left: 12, right: 12, top: 8, bottom: 8 })
                   .margin({ bottom: 8 })
                   .borderRadius(8)
-                  .backgroundColor(index === this.selectedGroupIndex ? '#2563eb' : '#1f2937')
+                  .backgroundColor(index === this.selectedGroupIndex ? this.theme().primary : this.theme().panelBg)
                   .onClick(() => {
                     this.selectGroup(index);
                   })
@@ -939,7 +947,7 @@ struct Live {
         Column() {
           Text('频道')
             .fontSize(16)
-            .fontColor('#cbd5e1')
+            .fontColor(this.theme().text)
             .margin({ bottom: 10 })
           Scroll() {
             Column() {
@@ -947,24 +955,24 @@ struct Live {
                 Row() {
                   Text(this.channelNumber(channel, index))
                     .fontSize(13)
-                    .fontColor('#93c5fd')
+                    .fontColor(this.theme().primarySoft)
                     .width(42)
                   Text(channel.channelName)
                     .fontSize(15)
-                    .fontColor(Color.White)
+                    .fontColor(this.theme().text)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                     .layoutWeight(1)
                   Text(`${channel.sourceUrls.length}源`)
                     .fontSize(12)
-                    .fontColor('#93a4b8')
+                    .fontColor(this.theme().mutedText)
                     .margin({ left: 8 })
                 }
                 .width('100%')
                 .padding({ left: 12, right: 12, top: 8, bottom: 8 })
                 .margin({ bottom: 8 })
                 .borderRadius(8)
-                .backgroundColor(index === this.selectedChannelIndex ? '#2563eb' : '#1f2937')
+                .backgroundColor(index === this.selectedChannelIndex ? this.theme().primary : this.theme().panelBg)
                 .onClick(() => {
                   this.selectChannel(index);
                 })
@@ -979,11 +987,11 @@ struct Live {
                 ForEach(this.getCurrentSourceUrls(), (_url: string, index: number) => {
                   Text(this.getCurrentSourceLabel(index))
                     .fontSize(12)
-                    .fontColor(Color.White)
+                    .fontColor(this.theme().text)
                     .padding({ left: 10, right: 10, top: 6, bottom: 6 })
                     .margin({ right: 8 })
                     .borderRadius(12)
-                    .backgroundColor(index === this.selectedSourceIndex ? '#16a34a' : '#334155')
+                    .backgroundColor(index === this.selectedSourceIndex ? '#16a34a' : this.theme().cardActiveBg)
                     .onClick(() => {
                       this.selectSource(index);
                     })
@@ -1007,12 +1015,12 @@ struct Live {
           Text('请输入分组密码')
             .fontSize(20)
             .fontWeight(FontWeight.Bold)
-            .fontColor(Color.White)
+            .fontColor(this.theme().text)
           Text(this.pendingGroupIndex >= 0 && this.pendingGroupIndex < this.groups.length
             ? this.groups[this.pendingGroupIndex].groupName
             : '')
             .fontSize(14)
-            .fontColor('#93a4b8')
+            .fontColor(this.theme().mutedText)
             .margin({ top: 8 })
           TextInput({ text: this.groupPasswordInput, placeholder: '分组密码' })
             .height(42)
@@ -1032,7 +1040,7 @@ struct Live {
             Button('取消')
               .height(38)
               .layoutWeight(1)
-              .backgroundColor('#374151')
+              .backgroundColor(this.theme().cardActiveBg)
               .onClick(() => this.cancelGroupPassword())
             Button('确认')
               .height(38)
@@ -1045,7 +1053,7 @@ struct Live {
         }
         .width(360)
         .padding(22)
-        .backgroundColor('#111827')
+        .backgroundColor(this.theme().fieldBg)
         .borderRadius(14)
       }
     }

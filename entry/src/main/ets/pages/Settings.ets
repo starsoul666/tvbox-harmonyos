@@ -17,6 +17,7 @@ import {
 import { HawkConfig } from '../constants/HawkConfig';
 import { SourceBean } from '../models/TvBoxModels';
 import { apiConfigService } from '../services/ApiConfigService';
+import { appearanceService, SettingsLabels, ThemePalette } from '../services/AppearanceService';
 import { settingsStore } from '../services/SettingsStore';
 import { vodDataStore } from '../services/VodDataStore';
 import { errorMessage } from '../utils/ErrorUtil';
@@ -66,6 +67,7 @@ struct Settings {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await appearanceService.init();
     this.apiUrl = await settingsStore.get<string>(HawkConfig.API_URL, '');
     this.liveUrl = await settingsStore.get<string>(HawkConfig.LIVE_URL, '');
     this.epgUrl = await settingsStore.get<string>(HawkConfig.EPG_URL, '');
@@ -87,6 +89,8 @@ struct Settings {
     this.videoPurify = await settingsStore.get<boolean>(HawkConfig.VIDEO_PURIFY, true);
     this.homeLocale = await settingsStore.get<number>(HawkConfig.HOME_LOCALE, 0);
     this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
+    appearanceService.setLocale(this.homeLocale);
+    appearanceService.setTheme(this.themeSelect);
     this.searchView = await settingsStore.get<number>(HawkConfig.SEARCH_VIEW, 1);
     this.fastSearchMode = await settingsStore.get<boolean>(HawkConfig.FAST_SEARCH_MODE, false);
     this.parseWebView = await settingsStore.get<boolean>(HawkConfig.PARSE_WEBVIEW, true);
@@ -107,8 +111,18 @@ struct Settings {
     this.sources = all.filter((item: SourceBean) => item.hide === 0);
     this.sourceCount = all.length;
     if (this.sourceCount > 0 && this.status === '未加载') {
-      this.status = `已加载 ${this.sourceCount} 个源`;
+      const labels = this.labels();
+      this.status = `${labels.loadSuccessPrefix}${this.sourceCount}${labels.loadSuccessSuffix}`;
     }
+  }
+
+  theme(): ThemePalette {
+    return appearanceService.themeByIndex(this.themeSelect);
+  }
+
+  labels(): SettingsLabels {
+    appearanceService.setLocale(this.homeLocale);
+    return appearanceService.settingsLabels();
   }
 
   /** Android stores `API_HISTORY` as a serialized list; ArkTS preferences only holds strings. */
@@ -149,11 +163,11 @@ struct Settings {
 
   async loadConfig(): Promise<void> {
     if (this.apiUrl.trim().length === 0) {
-      promptAction.showToast({ message: '请先填写配置地址' });
+      promptAction.showToast({ message: this.labels().pleaseInputConfig });
       return;
     }
     try {
-      this.status = '加载中...';
+      this.status = this.labels().loadConfig;
       await settingsStore.put(HawkConfig.API_URL, this.apiUrl.trim());
       await apiConfigService.loadConfig(this.apiUrl.trim(), false);
       await this.appendHistory(this.apiUrl.trim());
@@ -166,10 +180,11 @@ struct Settings {
         this.epgUrl = apiConfigService.state.liveEpgUrl;
         await settingsStore.put(HawkConfig.EPG_URL, this.epgUrl);
       }
-      this.status = `加载成功：${this.sourceCount} 个源`;
+      const labels = this.labels();
+      this.status = `${labels.loadSuccessPrefix}${this.sourceCount}${labels.loadSuccessSuffix}`;
       promptAction.showToast({ message: this.status });
     } catch (error) {
-      this.status = `加载失败：${errorMessage(error as Error)}`;
+      this.status = `${this.labels().loadFailedPrefix}${errorMessage(error as Error)}`;
       promptAction.showToast({ message: this.status });
     }
   }
@@ -178,24 +193,24 @@ struct Settings {
     await apiConfigService.setHomeSource(source);
     this.homeApi = source.key;
     this.panel = '';
-    promptAction.showToast({ message: `首页源：${source.name}` });
+    promptAction.showToast({ message: `${this.labels().homeSourcePrefix}${source.name}` });
   }
 
   /** Android `ResetDialog` / `ConfirmClearDialog` equivalents. */
   async clearCache(): Promise<void> {
     apiConfigService.clearConfigCache(this.apiUrl);
-    this.status = '已清除配置缓存';
+    this.status = this.labels().cacheCleared;
     promptAction.showToast({ message: this.status });
   }
 
   async clearHistoryRecords(): Promise<void> {
     vodDataStore.deleteVodRecordAll();
-    promptAction.showToast({ message: '已清空观看历史' });
+    promptAction.showToast({ message: this.labels().watchHistoryCleared });
   }
 
   async clearSearchRecords(): Promise<void> {
     vodDataStore.clearSearchKeywords();
-    promptAction.showToast({ message: '已清空搜索历史' });
+    promptAction.showToast({ message: this.labels().searchHistoryCleared });
   }
 
   togglePanel(name: string): void {
@@ -216,7 +231,7 @@ struct Settings {
     Text(text)
       .fontSize(20)
       .fontWeight(FontWeight.Bold)
-      .fontColor(Color.White)
+      .fontColor(this.theme().text)
       .width('100%')
       .margin({ top: 22, bottom: 8 })
   }
@@ -225,19 +240,19 @@ struct Settings {
   switchRow(label: string, key: string, value: boolean, apply: (next: boolean) => void) {
     Row() {
       Column() {
-        Text(label).fontSize(17).fontColor(Color.White)
-        Text(key).fontSize(12).fontColor('#64748b').margin({ top: 3 })
+        Text(label).fontSize(17).fontColor(this.theme().text)
+        Text(key).fontSize(12).fontColor(this.theme().subtleText).margin({ top: 3 })
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
-      Text(value ? '开启' : '关闭')
+      Text(value ? this.labels().enabled : this.labels().disabled)
         .fontSize(15)
-        .fontColor(value ? '#60a5fa' : '#94a3b8')
+        .fontColor(value ? this.theme().primarySoft : this.theme().mutedText)
     }
     .width('100%')
     .padding(16)
     .margin({ top: 8 })
-    .backgroundColor('#151d2b')
+    .backgroundColor(this.theme().cardBg)
     .borderRadius(12)
     .focusable(true)
     .onClick(() => apply(!value))
@@ -247,17 +262,17 @@ struct Settings {
   optionRow(label: string, key: string, current: string, panelName: string) {
     Row() {
       Column() {
-        Text(label).fontSize(17).fontColor(Color.White)
-        Text(key).fontSize(12).fontColor('#64748b').margin({ top: 3 })
+        Text(label).fontSize(17).fontColor(this.theme().text)
+        Text(key).fontSize(12).fontColor(this.theme().subtleText).margin({ top: 3 })
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
-      Text(current).fontSize(15).fontColor('#60a5fa')
+      Text(current).fontSize(15).fontColor(this.theme().primarySoft)
     }
     .width('100%')
     .padding(16)
     .margin({ top: 8 })
-    .backgroundColor(this.panel === panelName ? '#243044' : '#151d2b')
+    .backgroundColor(this.panel === panelName ? this.theme().cardActiveBg : this.theme().cardBg)
     .borderRadius(12)
     .focusable(true)
     .onClick(() => this.togglePanel(panelName))
@@ -269,10 +284,10 @@ struct Settings {
       ForEach(options, (name: string, index: number) => {
         Text(name)
           .fontSize(14)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .padding({ left: 14, right: 14, top: 8, bottom: 8 })
           .margin({ right: 8, top: 8 })
-          .backgroundColor(selected === index ? '#2563eb' : '#1f2937')
+          .backgroundColor(selected === index ? this.theme().primary : this.theme().panelBg)
           .borderRadius(8)
           .focusable(true)
           .onClick(() => {
@@ -290,19 +305,19 @@ struct Settings {
       Row() {
         Text('<')
           .fontSize(28)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .width(56)
           .textAlign(TextAlign.Center)
           .focusable(true)
           .onClick(() => router.back())
-        Text('设置')
+        Text(this.labels().title)
           .fontSize(28)
           .fontWeight(FontWeight.Bold)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .layoutWeight(1)
         Text(this.status)
           .fontSize(14)
-          .fontColor('#93a4b8')
+          .fontColor(this.theme().mutedText)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
@@ -311,24 +326,24 @@ struct Settings {
 
       Scroll() {
         Column() {
-          this.sectionTitle('配置')
+          this.sectionTitle(this.labels().config)
 
           Column() {
-            Text('配置地址').fontSize(17).fontColor(Color.White).width('100%')
-            TextInput({ text: this.apiUrl, placeholder: '请输入 TVBox JSON 配置地址' })
+            Text(this.labels().configUrl).fontSize(17).fontColor(this.theme().text).width('100%')
+            TextInput({ text: this.apiUrl, placeholder: this.labels().configPlaceholder })
               .height(46)
               .fontSize(15)
               .margin({ top: 10 })
               .onChange((value: string) => this.apiUrl = value)
             Row() {
-              Button('加载配置').height(40).onClick(() => this.loadConfig())
-              Button('清除缓存').height(40).margin({ left: 10 }).onClick(() => this.clearCache())
-              Button(`历史 ${this.apiHistory.length}`)
+              Button(this.labels().loadConfig).height(40).onClick(() => this.loadConfig())
+              Button(this.labels().clearCache).height(40).margin({ left: 10 }).onClick(() => this.clearCache())
+              Button(`${this.labels().history} ${this.apiHistory.length}`)
                 .height(40)
                 .margin({ left: 10 })
                 .enabled(this.apiHistory.length > 0)
                 .onClick(() => this.togglePanel('apiHistory'))
-              Button(`首页源 ${this.sources.length}`)
+              Button(`${this.labels().homeSource} ${this.sources.length}`)
                 .height(40)
                 .margin({ left: 10 })
                 .enabled(this.sources.length > 0)
@@ -342,7 +357,7 @@ struct Settings {
                 ForEach(this.apiHistory, (item: string) => {
                   Text(item)
                     .fontSize(13)
-                    .fontColor(item === this.apiUrl ? '#60a5fa' : '#cbd5e1')
+                    .fontColor(item === this.apiUrl ? this.theme().primarySoft : this.theme().text)
                     .width('100%')
                     .padding({ top: 8, bottom: 8 })
                     .maxLines(1)
@@ -363,12 +378,12 @@ struct Settings {
               Column() {
                 ForEach(this.sources, (source: SourceBean) => {
                   Row() {
-                    Text(source.name).fontSize(14).fontColor(Color.White).layoutWeight(1)
-                    Text(`type=${source.type}`).fontSize(12).fontColor('#64748b')
+                    Text(source.name).fontSize(14).fontColor(this.theme().text).layoutWeight(1)
+                    Text(`type=${source.type}`).fontSize(12).fontColor(this.theme().subtleText)
                   }
                   .width('100%')
                   .padding({ top: 9, bottom: 9 })
-                  .backgroundColor(source.key === this.homeApi ? '#243044' : Color.Transparent)
+                  .backgroundColor(source.key === this.homeApi ? this.theme().cardActiveBg : Color.Transparent)
                   .focusable(true)
                   .onClick(() => this.selectHomeSource(source))
                 }, (source: SourceBean) => source.key)
@@ -377,7 +392,7 @@ struct Settings {
               .margin({ top: 8 })
             }
 
-            TextInput({ text: this.liveUrl, placeholder: '直播 M3U/TXT 地址' })
+            TextInput({ text: this.liveUrl, placeholder: this.labels().livePlaceholder })
               .height(46)
               .fontSize(15)
               .margin({ top: 14 })
@@ -385,7 +400,7 @@ struct Settings {
                 this.liveUrl = value;
                 this.putString(HawkConfig.LIVE_URL, value);
               })
-            TextInput({ text: this.epgUrl, placeholder: 'EPG 地址' })
+            TextInput({ text: this.epgUrl, placeholder: this.labels().epgPlaceholder })
               .height(46)
               .fontSize(15)
               .margin({ top: 10 })
@@ -396,26 +411,26 @@ struct Settings {
           }
           .width('100%')
           .padding(18)
-          .backgroundColor('#1f2937')
+          .backgroundColor(this.theme().panelBg)
           .borderRadius(14)
 
-          this.sectionTitle('首页')
-          this.switchRow('数据源显示', HawkConfig.HOME_SHOW_SOURCE, this.homeShowSource, (next: boolean) => {
+          this.sectionTitle(this.labels().home)
+          this.switchRow(this.labels().sourceDisplay, HawkConfig.HOME_SHOW_SOURCE, this.homeShowSource, (next: boolean) => {
             this.homeShowSource = next;
             this.putBoolean(HawkConfig.HOME_SHOW_SOURCE, next);
           })
-          this.switchRow('启动进入直播', HawkConfig.HOME_DEFAULT_SHOW, this.homeDefaultShow, (next: boolean) => {
+          this.switchRow(this.labels().launchLive, HawkConfig.HOME_DEFAULT_SHOW, this.homeDefaultShow, (next: boolean) => {
             this.homeDefaultShow = next;
             this.putBoolean(HawkConfig.HOME_DEFAULT_SHOW, next);
           })
-          this.optionRow('推荐来源', HawkConfig.HOME_REC, this.optionLabel(HomeRecOptions, this.homeRec), 'homeRec')
+          this.optionRow(this.labels().recommendation, HawkConfig.HOME_REC, this.optionLabel(HomeRecOptions, this.homeRec), 'homeRec')
           if (this.panel === 'homeRec') {
             this.optionChips(HomeRecOptions, this.homeRec, (index: number) => {
               this.homeRec = index;
               this.putNumber(HawkConfig.HOME_REC, index);
             })
           }
-          this.optionRow('历史条数', HawkConfig.HOME_NUM, this.homeNumLabel(), 'homeNum')
+          this.optionRow(this.labels().historyCount, HawkConfig.HOME_NUM, this.homeNumLabel(), 'homeNum')
           if (this.panel === 'homeNum') {
             this.optionChips(HomeNumValues.map((value: number) => `${value}条`), this.homeNum, (index: number) => {
               this.homeNum = index;
@@ -423,20 +438,20 @@ struct Settings {
             })
           }
 
-          this.sectionTitle('播放器')
-          this.optionRow('画面缩放', HawkConfig.PLAY_SCALE, this.optionLabel(ScaleOptions, this.playScale), 'playScale')
+          this.sectionTitle(this.labels().player)
+          this.optionRow(this.labels().scale, HawkConfig.PLAY_SCALE, this.optionLabel(ScaleOptions, this.playScale), 'playScale')
           if (this.panel === 'playScale') {
             this.optionChips(ScaleOptions, this.playScale, (index: number) => {
               this.playScale = index;
               this.putNumber(HawkConfig.PLAY_SCALE, index);
             })
           }
-          this.optionRow('播放器类型', HawkConfig.PLAY_TYPE, this.optionLabel(PlayerOptions, this.playType), 'playType')
+          this.optionRow(this.labels().playerType, HawkConfig.PLAY_TYPE, this.optionLabel(PlayerOptions, this.playType), 'playType')
           if (this.panel === 'playType') {
             Column() {
-              Text('HarmonyOS 使用系统 AVPlayer，其余内核仅保留配置兼容。')
+              Text(this.labels().playerCompatNotice)
                 .fontSize(12)
-                .fontColor('#fbbf24')
+                .fontColor(this.theme().warningText)
                 .width('100%')
                 .padding({ left: 8, top: 6 })
               this.optionChips(PlayerOptions, this.playType, (index: number) => {
@@ -446,65 +461,65 @@ struct Settings {
             }
             .width('100%')
           }
-          this.optionRow('渲染方式', HawkConfig.PLAY_RENDER, this.optionLabel(RenderOptions, this.playRender), 'playRender')
+          this.optionRow(this.labels().renderMode, HawkConfig.PLAY_RENDER, this.optionLabel(RenderOptions, this.playRender), 'playRender')
           if (this.panel === 'playRender') {
             this.optionChips(RenderOptions, this.playRender, (index: number) => {
               this.playRender = index;
               this.putNumber(HawkConfig.PLAY_RENDER, index);
             })
           }
-          this.optionRow('IJK 解码', HawkConfig.IJK_CODEC, this.ijkCodec, 'ijkCodec')
+          this.optionRow(this.labels().codec, HawkConfig.IJK_CODEC, this.ijkCodec, 'ijkCodec')
           if (this.panel === 'ijkCodec') {
             this.optionChips(IjkCodecOptions, IjkCodecOptions.indexOf(this.ijkCodec), (index: number) => {
               this.ijkCodec = IjkCodecOptions[index];
               this.putString(HawkConfig.IJK_CODEC, this.ijkCodec);
             })
           }
-          this.optionRow('后台播放', HawkConfig.BACKGROUND_PLAY_TYPE, this.optionLabel(BackgroundPlayOptions, this.backgroundPlay), 'bgPlay')
+          this.optionRow(this.labels().backgroundPlay, HawkConfig.BACKGROUND_PLAY_TYPE, this.optionLabel(BackgroundPlayOptions, this.backgroundPlay), 'bgPlay')
           if (this.panel === 'bgPlay') {
             this.optionChips(BackgroundPlayOptions, this.backgroundPlay, (index: number) => {
               this.backgroundPlay = index;
               this.putNumber(HawkConfig.BACKGROUND_PLAY_TYPE, index);
             })
           }
-          this.optionRow('快进步长', HawkConfig.PLAY_TIME_STEP, `${this.playTimeStep}s`, 'timeStep')
+          this.optionRow(this.labels().seekStep, HawkConfig.PLAY_TIME_STEP, `${this.playTimeStep}s`, 'timeStep')
           if (this.panel === 'timeStep') {
             this.optionChips(['5s', '10s', '15s', '30s'], [5, 10, 15, 30].indexOf(this.playTimeStep), (index: number) => {
               this.playTimeStep = [5, 10, 15, 30][index];
               this.putNumber(HawkConfig.PLAY_TIME_STEP, this.playTimeStep);
             })
           }
-          this.switchRow('窗口预览', HawkConfig.SHOW_PREVIEW, this.showPreview, (next: boolean) => {
+          this.switchRow(this.labels().preview, HawkConfig.SHOW_PREVIEW, this.showPreview, (next: boolean) => {
             this.showPreview = next;
             this.putBoolean(HawkConfig.SHOW_PREVIEW, next);
           })
-          this.switchRow('广告过滤', HawkConfig.VIDEO_PURIFY, this.videoPurify, (next: boolean) => {
+          this.switchRow(this.labels().purify, HawkConfig.VIDEO_PURIFY, this.videoPurify, (next: boolean) => {
             this.videoPurify = next;
             this.putBoolean(HawkConfig.VIDEO_PURIFY, next);
           })
 
-          this.sectionTitle('直播')
-          this.switchRow('换台反转', HawkConfig.LIVE_CHANNEL_REVERSE, this.liveChannelReverse, (next: boolean) => {
+          this.sectionTitle(this.labels().live)
+          this.switchRow(this.labels().reverseChannel, HawkConfig.LIVE_CHANNEL_REVERSE, this.liveChannelReverse, (next: boolean) => {
             this.liveChannelReverse = next;
             this.putBoolean(HawkConfig.LIVE_CHANNEL_REVERSE, next);
           })
-          this.switchRow('跨分组换台', HawkConfig.LIVE_CROSS_GROUP, this.liveCrossGroup, (next: boolean) => {
+          this.switchRow(this.labels().crossGroup, HawkConfig.LIVE_CROSS_GROUP, this.liveCrossGroup, (next: boolean) => {
             this.liveCrossGroup = next;
             this.putBoolean(HawkConfig.LIVE_CROSS_GROUP, next);
           })
-          this.switchRow('显示时间', HawkConfig.LIVE_SHOW_TIME, this.liveShowTime, (next: boolean) => {
+          this.switchRow(this.labels().showTime, HawkConfig.LIVE_SHOW_TIME, this.liveShowTime, (next: boolean) => {
             this.liveShowTime = next;
             this.putBoolean(HawkConfig.LIVE_SHOW_TIME, next);
           })
-          this.switchRow('显示网速', HawkConfig.LIVE_SHOW_NET_SPEED, this.liveShowNetSpeed, (next: boolean) => {
+          this.switchRow(this.labels().showNetSpeed, HawkConfig.LIVE_SHOW_NET_SPEED, this.liveShowNetSpeed, (next: boolean) => {
             this.liveShowNetSpeed = next;
             this.putBoolean(HawkConfig.LIVE_SHOW_NET_SPEED, next);
           })
-          this.switchRow('跳过密码分组', HawkConfig.LIVE_SKIP_PASSWORD, this.liveSkipPassword, (next: boolean) => {
+          this.switchRow(this.labels().skipPassword, HawkConfig.LIVE_SKIP_PASSWORD, this.liveSkipPassword, (next: boolean) => {
             this.liveSkipPassword = next;
             this.putBoolean(HawkConfig.LIVE_SKIP_PASSWORD, next);
           })
-          this.optionRow('直播超时', HawkConfig.LIVE_CONNECT_TIMEOUT, this.optionLabel(LiveTimeoutOptions, this.liveConnectTimeout), 'liveTimeout')
+          this.optionRow(this.labels().liveTimeout, HawkConfig.LIVE_CONNECT_TIMEOUT, this.optionLabel(LiveTimeoutOptions, this.liveConnectTimeout), 'liveTimeout')
           if (this.panel === 'liveTimeout') {
             this.optionChips(LiveTimeoutOptions, this.liveConnectTimeout, (index: number) => {
               this.liveConnectTimeout = index;
@@ -512,52 +527,54 @@ struct Settings {
             })
           }
 
-          this.sectionTitle('系统')
-          this.optionRow('搜索展示', HawkConfig.SEARCH_VIEW, this.optionLabel(SearchViewOptions, this.searchView), 'searchView')
+          this.sectionTitle(this.labels().system)
+          this.optionRow(this.labels().searchView, HawkConfig.SEARCH_VIEW, this.optionLabel(SearchViewOptions, this.searchView), 'searchView')
           if (this.panel === 'searchView') {
             this.optionChips(SearchViewOptions, this.searchView, (index: number) => {
               this.searchView = index;
               this.putNumber(HawkConfig.SEARCH_VIEW, index);
             })
           }
-          this.switchRow('快速搜索', HawkConfig.FAST_SEARCH_MODE, this.fastSearchMode, (next: boolean) => {
+          this.switchRow(this.labels().fastSearch, HawkConfig.FAST_SEARCH_MODE, this.fastSearchMode, (next: boolean) => {
             this.fastSearchMode = next;
             this.putBoolean(HawkConfig.FAST_SEARCH_MODE, next);
           })
-          this.optionRow('语言', HawkConfig.HOME_LOCALE, this.optionLabel(LocaleOptions, this.homeLocale), 'locale')
+          this.optionRow(this.labels().locale, HawkConfig.HOME_LOCALE, this.optionLabel(LocaleOptions, this.homeLocale), 'locale')
           if (this.panel === 'locale') {
             this.optionChips(LocaleOptions, this.homeLocale, (index: number) => {
               this.homeLocale = index;
+              appearanceService.setLocale(index);
               this.putNumber(HawkConfig.HOME_LOCALE, index);
             })
           }
-          this.optionRow('主题', HawkConfig.THEME_SELECT, this.optionLabel(ThemeOptions, this.themeSelect), 'theme')
+          this.optionRow(this.labels().theme, HawkConfig.THEME_SELECT, this.optionLabel(ThemeOptions, this.themeSelect), 'theme')
           if (this.panel === 'theme') {
             this.optionChips(ThemeOptions, this.themeSelect, (index: number) => {
               this.themeSelect = index;
+              appearanceService.setTheme(index);
               this.putNumber(HawkConfig.THEME_SELECT, index);
             })
           }
-          this.optionRow('安全 DNS', HawkConfig.DOH_URL, this.optionLabel(DnsOptions, this.dohUrl), 'dns')
+          this.optionRow(this.labels().dns, HawkConfig.DOH_URL, this.optionLabel(DnsOptions, this.dohUrl), 'dns')
           if (this.panel === 'dns') {
             this.optionChips(DnsOptions, this.dohUrl, (index: number) => {
               this.dohUrl = index;
               this.putNumber(HawkConfig.DOH_URL, index);
             })
           }
-          this.switchRow('嗅探 WebView', HawkConfig.PARSE_WEBVIEW, this.parseWebView, (next: boolean) => {
+          this.switchRow(this.labels().sniffWebView, HawkConfig.PARSE_WEBVIEW, this.parseWebView, (next: boolean) => {
             this.parseWebView = next;
             this.putBoolean(HawkConfig.PARSE_WEBVIEW, next);
           })
-          this.switchRow('调试模式', HawkConfig.DEBUG_OPEN, this.debugOpen, (next: boolean) => {
+          this.switchRow(this.labels().debug, HawkConfig.DEBUG_OPEN, this.debugOpen, (next: boolean) => {
             this.debugOpen = next;
             this.putBoolean(HawkConfig.DEBUG_OPEN, next);
           })
 
-          this.sectionTitle('数据')
+          this.sectionTitle(this.labels().data)
           Row() {
-            Button('清空观看历史').height(40).onClick(() => this.clearHistoryRecords())
-            Button('清空搜索历史').height(40).margin({ left: 10 }).onClick(() => this.clearSearchRecords())
+            Button(this.labels().clearWatchHistory).height(40).onClick(() => this.clearHistoryRecords())
+            Button(this.labels().clearSearchHistory).height(40).margin({ left: 10 }).onClick(() => this.clearSearchRecords())
           }
           .width('100%')
           .margin({ top: 8, bottom: 40 })
@@ -569,6 +586,6 @@ struct Settings {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#0b1020')
+    .backgroundColor(this.theme().pageBg)
   }
 }

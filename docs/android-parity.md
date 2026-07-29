@@ -115,6 +115,10 @@ config URL + load + cache clear + URL history, home source picker, live/EPG URLs
   `FAST_SEARCH_MODE`, and search-history reuse.
 - History and Favorites: delete mode, clear-all, progress percentage, `HOME_NUM` row limit,
   and poster grid for favorites.
+- `THEME_SELECT` now affects all pages: regular pages use the selected HarmonyOS color palette,
+  while Play and Live keep the video surface black and apply the palette to control overlays,
+  sliders, lists, and status text. `HOME_LOCALE` currently switches Home, Settings, Search,
+  FastSearch, History, Favorites, and Push labels/status text.
 
 ### Data and config
 
@@ -146,4 +150,7 @@ These require native (C++/NAPI) work or privileged platform APIs and remain unim
    uninstall APIs are privileged/enterprise-only, so this stays a manually curated launcher list.
 8. **Player kernel matrix** — IJK/Exo/Ali/MX/Reex/Kodi cannot be shipped; everything maps onto
    AVPlayer. The setting is retained for config compatibility only.
-9. **Themes and localization** are persisted but not yet applied to the UI.
+9. **Localization coverage** is partial: Home, Settings, Search, FastSearch, History, Favorites,
+   and Push apply `HOME_LOCALE`, while Drive, Apps, Category, Detail, Play, and Live labels are
+   still static Chinese. `THEME_SELECT` is now applied across all pages, with Play/Live
+   intentionally preserving black video surfaces for playback contrast.

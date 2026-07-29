@@ -1,6 +1,7 @@
 import router from '@ohos.router';
 import { HawkConfig } from '../constants/HawkConfig';
 import { apiConfigService } from '../services/ApiConfigService';
+import { appearanceService, FeatureLabels, ThemePalette } from '../services/AppearanceService';
 import { HttpClient } from '../services/HttpClient';
 import { settingsStore } from '../services/SettingsStore';
 import { errorMessage } from '../utils/ErrorUtil';
@@ -17,6 +18,8 @@ struct Push {
   @State sending: boolean = false;
   @State hasPushAgent: boolean = false;
   @State pushAgentText: string = 'push_agent 未加载';
+  @State themeSelect: number = 0;
+  @State localeSelect: number = 0;
 
   aboutToAppear(): void {
     this.initPage();
@@ -24,6 +27,11 @@ struct Push {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await appearanceService.init();
+    this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
+    this.localeSelect = await settingsStore.get<number>(HawkConfig.HOME_LOCALE, 0);
+    this.statusText = this.labels().pushInitialStatus;
+    this.pushAgentText = this.labels().pushAgentUnloaded;
     await this.ensureConfigLoaded();
     this.remoteAddr = await settingsStore.get<string>(HawkConfig.PUSH_TO_ADDR, '');
     this.remotePort = await settingsStore.get<string>(HawkConfig.PUSH_TO_PORT, '9978');
@@ -46,19 +54,19 @@ struct Push {
     const pushAgent = apiConfigService.state.sourceBeanList['push_agent'];
     if (pushAgent === undefined) {
       this.hasPushAgent = false;
-      this.pushAgentText = '当前配置没有 push_agent，手工输入地址只能直接播放或推送到远端。';
+      this.pushAgentText = this.labels().pushAgentMissing;
       return;
     }
     this.hasPushAgent = pushAgent.type === 0 || pushAgent.type === 1 || pushAgent.type === 4;
     this.pushAgentText = this.hasPushAgent
-      ? '当前配置包含 API 型 push_agent，可按 Android 详情入口解析手工输入地址。'
-      : `当前 push_agent 类型为 ${pushAgent.type}，Spider push_agent 详情解析仍待迁移。`;
+      ? this.labels().pushAgentReady
+      : `${this.labels().pushAgentSpiderPrefix}${pushAgent.type}${this.labels().pushAgentSpiderSuffix}`;
   }
 
   openPlay(): void {
     const value = this.url.trim();
     if (value.length === 0) {
-      this.statusText = '播放地址不能为空';
+      this.statusText = this.labels().pushUrlEmpty;
       return;
     }
     router.pushUrl({
@@ -70,7 +78,7 @@ struct Push {
         playIndex: '0',
         playUrl: value,
         rawUrl: value,
-        episodeName: '推送播放'
+        episodeName: this.labels().pushPlayName
       }
     });
   }
@@ -78,7 +86,7 @@ struct Push {
   openPushAgentDetail(): void {
     const value = this.url.trim();
     if (value.length === 0) {
-      this.statusText = '播放地址不能为空';
+      this.statusText = this.labels().pushUrlEmpty;
       return;
     }
     if (!this.hasPushAgent) {
@@ -99,30 +107,30 @@ struct Push {
     const addr = this.remoteAddr.trim();
     const port = this.remotePort.trim().length === 0 ? '9978' : this.remotePort.trim();
     if (value.length === 0) {
-      this.statusText = '播放地址不能为空';
+      this.statusText = this.labels().pushUrlEmpty;
       return;
     }
     if (addr.length === 0) {
-      this.statusText = '远端 TVBox 地址不能为空';
+      this.statusText = this.labels().remoteAddrEmpty;
       return;
     }
     await settingsStore.put(HawkConfig.PUSH_TO_ADDR, addr);
     await settingsStore.put(HawkConfig.PUSH_TO_PORT, port);
     const baseUrl = this.remoteBaseUrl(addr, port);
     this.sending = true;
-    this.statusText = `正在推送到 ${baseUrl}`;
+    this.statusText = `${this.labels().pushingPrefix}${baseUrl}`;
     try {
       await this.httpClient.postFormText(`${baseUrl}/action`, {
         do: 'push',
         url: value
       });
-      this.statusText = '已按 Android /action 协议推送';
+      this.statusText = this.labels().pushActionSuccess;
     } catch (firstError) {
       try {
         await this.httpClient.getText(`${baseUrl}/api/updateUrl?url=${encodeURIComponent(value)}`);
-        this.statusText = '已按 /api/updateUrl 兼容接口推送';
+        this.statusText = this.labels().pushCompatSuccess;
       } catch (_secondError) {
-        this.statusText = `远端推送失败：${errorMessage(firstError)}`;
+        this.statusText = `${this.labels().pushFailedPrefix}${errorMessage(firstError)}`;
       }
     } finally {
       this.sending = false;
@@ -137,43 +145,52 @@ struct Push {
     return `http://${trimmed}:${port}`;
   }
 
+  theme(): ThemePalette {
+    return appearanceService.themeByIndex(this.themeSelect);
+  }
+
+  labels(): FeatureLabels {
+    appearanceService.setLocale(this.localeSelect);
+    return appearanceService.featureLabels();
+  }
+
 
   build() {
     Column() {
-      Text('< 返回').fontSize(18).fontColor(Color.White).alignSelf(ItemAlign.Start).onClick(() => router.back())
-      Text('推送').fontSize(36).fontWeight(FontWeight.Bold).fontColor(Color.White).margin({ top: 32 })
-      TextInput({ text: this.url, placeholder: '输入播放地址' })
+      Text(this.labels().back).fontSize(18).fontColor(this.theme().text).alignSelf(ItemAlign.Start).onClick(() => router.back())
+      Text(this.labels().pushTitle).fontSize(36).fontWeight(FontWeight.Bold).fontColor(this.theme().text).margin({ top: 32 })
+      TextInput({ text: this.url, placeholder: this.labels().pushUrlPlaceholder })
         .height(52)
         .fontSize(18)
         .margin({ top: 24 })
         .onChange((value: string) => this.url = value)
       Row() {
-        Button('直接播放')
+        Button(this.labels().directPlay)
           .height(44)
           .onClick(() => this.openPlay())
-        Button('push_agent 详情')
+        Button(this.labels().pushAgentDetail)
           .height(44)
           .margin({ left: 12 })
           .enabled(this.hasPushAgent)
           .onClick(() => this.openPushAgentDetail())
-        Button(this.sending ? '推送中' : '推送到远端')
+        Button(this.sending ? this.labels().pushingButton : this.labels().pushRemoteButton)
           .height(44)
           .margin({ left: 12 })
           .enabled(!this.sending)
           .onClick(() => this.pushToRemote())
         Text(this.statusText)
           .fontSize(15)
-          .fontColor('#d1d5db')
+          .fontColor(this.theme().text)
           .margin({ left: 16 })
           .layoutWeight(1)
       }.width('100%').margin({ top: 18 }).alignItems(VerticalAlign.Center)
       Row() {
-        TextInput({ text: this.remoteAddr, placeholder: '远端 TVBox IP 或 http://host:port' })
+        TextInput({ text: this.remoteAddr, placeholder: this.labels().remoteAddrPlaceholder })
           .height(48)
           .fontSize(16)
           .layoutWeight(1)
           .onChange((value: string) => this.remoteAddr = value)
-        TextInput({ text: this.remotePort, placeholder: '端口' })
+        TextInput({ text: this.remotePort, placeholder: this.labels().remotePortPlaceholder })
           .height(48)
           .fontSize(16)
           .width(130)
@@ -182,14 +199,14 @@ struct Push {
       }
       .width('100%')
       .margin({ top: 18 })
-      Text('已迁移 Android 远端推送出口：优先 POST /action do=push，失败后兼容 GET /api/updateUrl；配置存在 push_agent 时可按 Android 详情入口解析手工输入地址。远程 HTTP server 接收推送和二维码入口仍待迁移。')
+      Text(this.labels().pushCompatNotice)
         .fontSize(14)
-        .fontColor('#93a4b8')
+        .fontColor(this.theme().mutedText)
         .margin({ top: 24 })
       Text(this.pushAgentText)
         .fontSize(13)
         .fontColor(this.hasPushAgent ? '#93c5fd' : '#fbbf24')
         .margin({ top: 8 })
-    }.width('100%').height('100%').padding(48).backgroundColor('#0b1020')
+    }.width('100%').height('100%').padding(48).backgroundColor(this.theme().pageBg)
   }
 }

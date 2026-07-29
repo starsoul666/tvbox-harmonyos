@@ -2,6 +2,7 @@ import router from '@ohos.router';
 import { HawkConfig } from '../constants/HawkConfig';
 import { MovieSort, SortFilter, SortFilterValue, SourceBean, VodInfo } from '../models/TvBoxModels';
 import { apiConfigService } from '../services/ApiConfigService';
+import { appearanceService, ThemePalette } from '../services/AppearanceService';
 import { settingsStore } from '../services/SettingsStore';
 import { sourceService } from '../services/SourceService';
 import { errorMessage } from '../utils/ErrorUtil';
@@ -26,6 +27,7 @@ struct Category {
   @State filterVisible: boolean = false;
   @State filterSelect: Record<string, string> = {};
   @State thumbnailView: boolean = true;
+  @State themeSelect: number = 0;
 
   aboutToAppear(): void {
     this.initPage();
@@ -33,6 +35,8 @@ struct Category {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await appearanceService.init();
+    this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
     this.thumbnailView = (await settingsStore.get<number>(HawkConfig.SEARCH_VIEW, 1)) === 1;
     if (Object.keys(apiConfigService.state.sourceBeanList).length === 0) {
       try {
@@ -160,6 +164,10 @@ struct Category {
     });
   }
 
+  theme(): ThemePalette {
+    return appearanceService.themeByIndex(this.themeSelect);
+  }
+
   @Builder
   vodCard(vod: VodInfo) {
     Column() {
@@ -172,24 +180,24 @@ struct Category {
           .alt($r('app.media.app_icon'))
       } else {
         Column() {
-          Text('无封面').fontSize(14).fontColor('#64748b')
+          Text('无封面').fontSize(14).fontColor(this.theme().subtleText)
         }
         .width('100%')
         .layoutWeight(1)
         .borderRadius(10)
         .justifyContent(FlexAlign.Center)
-        .backgroundColor('#111827')
+        .backgroundColor(this.theme().fieldBg)
       }
       Text(vod.name)
         .fontSize(14)
-        .fontColor(Color.White)
+        .fontColor(this.theme().text)
         .width('100%')
         .margin({ top: 8 })
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
       Text(vod.note === undefined ? '' : vod.note)
         .fontSize(12)
-        .fontColor('#93a4b8')
+        .fontColor(this.theme().mutedText)
         .width('100%')
         .margin({ top: 2 })
         .maxLines(1)
@@ -199,7 +207,7 @@ struct Category {
     .height('100%')
     .padding(8)
     .borderRadius(12)
-    .backgroundColor('#151d2b')
+    .backgroundColor(this.theme().cardBg)
     .focusable(true)
     .onClick(() => this.openVod(vod))
   }
@@ -209,13 +217,13 @@ struct Category {
       Row() {
         Text('< 返回')
           .fontSize(18)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .focusable(true)
           .onClick(() => router.back())
         Text(this.source === null ? '分类' : this.source.name)
           .fontSize(24)
           .fontWeight(FontWeight.Bold)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .margin({ left: 24 })
           .layoutWeight(1)
         if (this.currentCategoryHasFilters()) {
@@ -226,7 +234,7 @@ struct Category {
         }
         Text(this.statusText)
           .fontSize(13)
-          .fontColor('#93a4b8')
+          .fontColor(this.theme().mutedText)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
@@ -239,10 +247,10 @@ struct Category {
             ForEach(this.categories, (category: MovieSort, index: number) => {
               Text(category.sortName)
                 .fontSize(15)
-                .fontColor(Color.White)
+                .fontColor(this.theme().text)
                 .padding({ left: 16, right: 16, top: 9, bottom: 9 })
                 .margin({ right: 10 })
-                .backgroundColor(this.categoryIndex === index ? '#2563eb' : '#1f2937')
+                .backgroundColor(this.categoryIndex === index ? this.theme().primary : this.theme().panelBg)
                 .borderRadius(16)
                 .focusable(true)
                 .onClick(() => this.selectCategory(index))
@@ -258,15 +266,15 @@ struct Category {
         Column() {
           ForEach(this.currentFilters(), (filter: SortFilter) => {
             Column() {
-              Text(filter.name).fontSize(14).fontColor('#93a4b8').width('100%')
+              Text(filter.name).fontSize(14).fontColor(this.theme().mutedText).width('100%')
               Flex({ wrap: FlexWrap.Wrap }) {
                 ForEach(filter.values, (value: SortFilterValue) => {
                   Text(value.name)
                     .fontSize(13)
-                    .fontColor(Color.White)
+                    .fontColor(this.theme().text)
                     .padding({ left: 12, right: 12, top: 6, bottom: 6 })
                     .margin({ right: 8, top: 6 })
-                    .backgroundColor(this.isFilterSelected(filter, value) ? '#2563eb' : '#1f2937')
+                    .backgroundColor(this.isFilterSelected(filter, value) ? this.theme().primary : this.theme().panelBg)
                     .borderRadius(8)
                     .focusable(true)
                     .onClick(() => this.selectFilter(filter, value))
@@ -281,13 +289,13 @@ struct Category {
         .width('100%')
         .padding(14)
         .margin({ top: 12 })
-        .backgroundColor('#151d2b')
+        .backgroundColor(this.theme().cardBg)
         .borderRadius(12)
       }
 
       if (this.items.length === 0 && !this.loading) {
         Column() {
-          Text(this.statusText).fontSize(17).fontColor('#d1d5db')
+          Text(this.statusText).fontSize(17).fontColor(this.theme().mutedText)
         }
         .width('100%')
         .layoutWeight(1)
@@ -312,8 +320,8 @@ struct Category {
 
       if (this.loading) {
         Row() {
-          LoadingProgress().width(24).height(24).color('#60a5fa')
-          Text('加载中').fontSize(14).fontColor('#93a4b8').margin({ left: 10 })
+          LoadingProgress().width(24).height(24).color(this.theme().primarySoft)
+          Text('加载中').fontSize(14).fontColor(this.theme().mutedText).margin({ left: 10 })
         }
         .width('100%')
         .justifyContent(FlexAlign.Center)
@@ -323,7 +331,7 @@ struct Category {
     .width('100%')
     .height('100%')
     .padding({ left: 40, right: 40, top: 30, bottom: 24 })
-    .backgroundColor('#0b1020')
+    .backgroundColor(this.theme().pageBg)
   }
 
   currentFilters(): SortFilter[] {

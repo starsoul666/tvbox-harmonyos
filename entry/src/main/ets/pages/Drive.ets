@@ -3,6 +3,7 @@ import promptAction from '@ohos.promptAction';
 import { HawkConfig } from '../constants/HawkConfig';
 import { DriveFileItem, DriveType, StorageDrive, VodInfo } from '../models/TvBoxModels';
 import { PlayerConfig } from '../domain/playback/PlayerConfig';
+import { appearanceService, ThemePalette } from '../services/AppearanceService';
 import { driveDataStore } from '../services/DriveDataStore';
 import { driveService } from '../services/DriveService';
 import { settingsStore } from '../services/SettingsStore';
@@ -28,6 +29,7 @@ struct Drive {
   @State loading: boolean = false;
   @State sortType: number = 0;
   @State searchKeyword: string = '';
+  @State themeSelect: number = 0;
 
   aboutToAppear(): void {
     this.initPage();
@@ -35,6 +37,8 @@ struct Drive {
 
   async initPage(): Promise<void> {
     await settingsStore.init(getContext(this));
+    await appearanceService.init();
+    this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
     this.sortType = await settingsStore.get<number>(HawkConfig.STORAGE_DRIVE_SORT, 0);
     this.refreshDrives();
   }
@@ -343,18 +347,22 @@ struct Drive {
     return this.driveTypeInput === DriveType.WEBDAV ? 'WebDAV' : 'Alist';
   }
 
+  theme(): ThemePalette {
+    return appearanceService.themeByIndex(this.themeSelect);
+  }
+
 
   build() {
     Column() {
       Row() {
         Text('< 返回')
           .fontSize(18)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .onClick(() => router.back())
         Text('网盘')
           .fontSize(30)
           .fontWeight(FontWeight.Bold)
-          .fontColor(Color.White)
+          .fontColor(this.theme().text)
           .margin({ left: 24 })
           .layoutWeight(1)
         Button(`排序：${this.sortName()}`)
@@ -366,7 +374,7 @@ struct Drive {
 
       Text(this.statusText)
         .fontSize(14)
-        .fontColor('#93a4b8')
+        .fontColor(this.theme().mutedText)
         .margin({ top: 12 })
         .width('100%')
 
@@ -375,30 +383,30 @@ struct Drive {
           Text(`${this.editDriveId > 0 ? '编辑' : '添加'}${this.driveTypeInputName()}`)
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
-            .fontColor(Color.White)
+            .fontColor(this.theme().text)
           if (this.editDriveId > 0) {
             Text(`编辑记录 #${this.editDriveId}`)
               .fontSize(13)
-              .fontColor('#93a4b8')
+              .fontColor(this.theme().mutedText)
               .margin({ top: 6 })
           }
           Row() {
             Button('本地')
               .height(36)
               .layoutWeight(1)
-              .backgroundColor(this.driveTypeInput === DriveType.LOCAL ? '#2563eb' : '#374151')
+              .backgroundColor(this.driveTypeInput === DriveType.LOCAL ? this.theme().primary : this.theme().cardActiveBg)
               .onClick(() => this.driveTypeInput = DriveType.LOCAL)
             Button('Alist')
               .height(36)
               .layoutWeight(1)
               .margin({ left: 10 })
-              .backgroundColor(this.driveTypeInput === DriveType.ALISTWEB ? '#2563eb' : '#374151')
+              .backgroundColor(this.driveTypeInput === DriveType.ALISTWEB ? this.theme().primary : this.theme().cardActiveBg)
               .onClick(() => this.driveTypeInput = DriveType.ALISTWEB)
             Button('WebDAV')
               .height(36)
               .layoutWeight(1)
               .margin({ left: 10 })
-              .backgroundColor(this.driveTypeInput === DriveType.WEBDAV ? '#2563eb' : '#374151')
+              .backgroundColor(this.driveTypeInput === DriveType.WEBDAV ? this.theme().primary : this.theme().cardActiveBg)
               .onClick(() => this.driveTypeInput = DriveType.WEBDAV)
           }
           .margin({ top: 12 })
@@ -444,7 +452,7 @@ struct Drive {
           } else {
             Text('HarmonyOS Next 受系统沙箱限制，普通应用通常只能读取授权目录或应用可访问目录；这里先提供 Android StorageDrive 兼容的本地路径记录与浏览。')
               .fontSize(12)
-              .fontColor('#93a4b8')
+              .fontColor(this.theme().mutedText)
               .margin({ top: 10 })
           }
           Row() {
@@ -461,7 +469,7 @@ struct Drive {
         }
         .width(360)
         .padding(18)
-        .backgroundColor('#111827')
+        .backgroundColor(this.theme().fieldBg)
         .borderRadius(14)
 
         Column() {
@@ -469,7 +477,7 @@ struct Drive {
             Text(this.browserTitle())
               .fontSize(18)
               .fontWeight(FontWeight.Medium)
-              .fontColor(Color.White)
+              .fontColor(this.theme().text)
               .layoutWeight(1)
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -485,7 +493,7 @@ struct Drive {
             if (this.drives.length === 0) {
               Text('暂无网盘，先添加一个本地目录、Alist 或 WebDAV。')
                 .fontSize(16)
-                .fontColor('#d1d5db')
+                .fontColor(this.theme().mutedText)
                 .margin({ top: 24 })
             } else {
               List() {
@@ -495,12 +503,12 @@ struct Drive {
                       Column() {
                         Text(drive.name)
                           .fontSize(18)
-                          .fontColor(Color.White)
+                          .fontColor(this.theme().text)
                           .maxLines(1)
                           .textOverflow({ overflow: TextOverflow.Ellipsis })
                         Text(this.driveTypeName(drive.type))
                           .fontSize(13)
-                          .fontColor('#93a4b8')
+                          .fontColor(this.theme().mutedText)
                           .margin({ top: 5 })
                       }
                       .alignItems(HorizontalAlign.Start)
@@ -520,7 +528,7 @@ struct Drive {
                     }
                     .width('100%')
                     .padding(14)
-                    .backgroundColor('#151d2b')
+                    .backgroundColor(this.theme().cardBg)
                     .borderRadius(12)
                   }
                   .margin({ top: 12 })
@@ -548,10 +556,10 @@ struct Drive {
 
           if (this.selectedDrive !== null && this.loading) {
             Column() {
-              LoadingProgress().width(48).height(48).color('#60a5fa')
+              LoadingProgress().width(48).height(48).color(this.theme().primarySoft)
               Text('加载中...')
                 .fontSize(15)
-                .fontColor('#d1d5db')
+                .fontColor(this.theme().mutedText)
                 .margin({ top: 12 })
             }
             .layoutWeight(1)
@@ -559,7 +567,7 @@ struct Drive {
           } else if (this.selectedDrive !== null && this.items.length === 0) {
             Text(this.allItems.length > 0 ? '没有匹配项' : '当前目录为空')
               .fontSize(16)
-              .fontColor('#d1d5db')
+              .fontColor(this.theme().mutedText)
               .margin({ top: 24 })
           } else if (this.selectedDrive !== null) {
             List() {
@@ -568,28 +576,28 @@ struct Drive {
                   Row() {
                     Text(item.isFile ? '>' : '[D]')
                       .fontSize(20)
-                      .fontColor(item.isFile ? '#60a5fa' : '#fbbf24')
+                      .fontColor(item.isFile ? this.theme().primarySoft : '#fbbf24')
                       .width(34)
                     Column() {
                       Text(item.name)
                         .fontSize(17)
-                        .fontColor(Color.White)
+                        .fontColor(this.theme().text)
                         .maxLines(1)
                         .textOverflow({ overflow: TextOverflow.Ellipsis })
                       Text(`${item.isFile ? item.fileType : '目录'} ${driveService.formatTime(item.lastModified)}`)
                         .fontSize(12)
-                        .fontColor('#93a4b8')
+                        .fontColor(this.theme().mutedText)
                         .margin({ top: 5 })
                     }
                     .alignItems(HorizontalAlign.Start)
                     .layoutWeight(1)
                     Text(item.isFile ? (driveService.isVideoFile(item) ? '播放' : '文件') : '打开')
                       .fontSize(14)
-                      .fontColor('#60a5fa')
+                      .fontColor(this.theme().primarySoft)
                   }
                   .width('100%')
                   .padding(14)
-                  .backgroundColor('#151d2b')
+                  .backgroundColor(this.theme().cardBg)
                   .borderRadius(12)
                   .onClick(() => this.openItem(item))
                 }
@@ -604,7 +612,7 @@ struct Drive {
         .height('100%')
         .margin({ left: 18 })
         .padding(18)
-        .backgroundColor('#111827')
+        .backgroundColor(this.theme().fieldBg)
         .borderRadius(14)
       }
       .width('100%')
@@ -614,6 +622,6 @@ struct Drive {
     .width('100%')
     .height('100%')
     .padding(40)
-    .backgroundColor('#0b1020')
+    .backgroundColor(this.theme().pageBg)
   }
 }
