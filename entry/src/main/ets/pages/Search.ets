@@ -23,6 +23,7 @@ struct SearchPage {
   @State thumbnailView: boolean = true;
   @State themeSelect: number = 0;
   @State localeSelect: number = 0;
+  @State filterKey: string = '';
 
   aboutToAppear(): void {
     this.initPage();
@@ -36,6 +37,7 @@ struct SearchPage {
     this.statusText = this.labels().searchInitialStatus;
     this.fastSearchMode = await settingsStore.get<boolean>(HawkConfig.FAST_SEARCH_MODE, false);
     this.thumbnailView = (await settingsStore.get<number>(HawkConfig.SEARCH_VIEW, 1)) === 1;
+    this.filterKey = await settingsStore.get<string>(HawkConfig.SEARCH_FILTER_KEY, '');
     this.sources = searchSourceStore.searchableSources();
     this.checkedKeys = await searchSourceStore.getCheckedKeys();
     this.refreshHistory();
@@ -63,6 +65,17 @@ struct SearchPage {
       : this.checkedKeys.concat([source.key]);
     this.checkedKeys = next;
     await searchSourceStore.setCheckedKeys(next);
+  }
+
+  matchesFilter(vod: VodInfo): boolean {
+    if (this.filterKey.trim().length === 0) {
+      return true;
+    }
+    return vod.name.includes(this.filterKey.trim());
+  }
+
+  filteredList(group: SourceSearchResult): VodInfo[] {
+    return group.result.list.filter((vod: VodInfo) => this.matchesFilter(vod));
   }
 
   async selectAllSources(): Promise<void> {
@@ -164,6 +177,23 @@ struct SearchPage {
       .width('100%')
       .margin({ top: 18 })
 
+      Row() {
+        Text(this.labels().searchFilterPlaceholder)
+          .fontSize(13)
+          .fontColor(this.theme().mutedText)
+          .width(80)
+        TextInput({ text: this.filterKey, placeholder: this.labels().searchFilterPlaceholder })
+          .height(40)
+          .fontSize(14)
+          .layoutWeight(1)
+          .onChange((value: string) => {
+            this.filterKey = value;
+            settingsStore.put(HawkConfig.SEARCH_FILTER_KEY, value);
+          })
+      }
+      .width('100%')
+      .margin({ top: 8 })
+
       Text(this.statusText)
         .fontSize(14)
         .fontColor(this.theme().mutedText)
@@ -255,7 +285,7 @@ struct SearchPage {
                     .fontWeight(FontWeight.Medium)
                     .fontColor(this.theme().text)
                     .layoutWeight(1)
-                  Text(group.error !== undefined && group.error.length > 0 ? this.labels().failed : `${group.result.list.length}${this.labels().resultSuffix}`)
+                   Text(group.error !== undefined && group.error.length > 0 ? this.labels().failed : `${this.filteredList(group).length}${this.labels().resultSuffix}`)
                     .fontSize(13)
                     .fontColor(group.error !== undefined && group.error.length > 0 ? '#fca5a5' : this.theme().mutedText)
                 }
@@ -270,9 +300,9 @@ struct SearchPage {
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                 } else if (this.thumbnailView) {
                   Flex({ wrap: FlexWrap.Wrap }) {
-                    ForEach(group.result.list, (vod: VodInfo) => {
-                      Column() {
-                        if (vod.pic !== undefined && vod.pic.length > 0) {
+                    ForEach(this.filteredList(group), (vod: VodInfo) => {
+                       Column() {
+                         if (vod.pic !== undefined && vod.pic.length > 0) {
                           Image(vod.pic)
                             .width('100%')
                             .height(150)
@@ -311,7 +341,7 @@ struct SearchPage {
                   }
                   .width('100%')
                 } else {
-                  ForEach(group.result.list, (vod: VodInfo) => {
+                  ForEach(this.filteredList(group), (vod: VodInfo) => {
                     Row() {
                       Text(vod.name)
                         .fontSize(15)

@@ -2,7 +2,7 @@ import router from '@ohos.router';
 import { HawkConfig } from '../constants/HawkConfig';
 import { MovieSort, SortFilter, SortFilterValue, SourceBean, VodInfo } from '../models/TvBoxModels';
 import { apiConfigService } from '../services/ApiConfigService';
-import { appearanceService, ThemePalette } from '../services/AppearanceService';
+import { appearanceService, CategoryLabels, ThemePalette } from '../services/AppearanceService';
 import { settingsStore } from '../services/SettingsStore';
 import { sourceService } from '../services/SourceService';
 import { errorMessage } from '../utils/ErrorUtil';
@@ -23,7 +23,7 @@ struct Category {
   @State page: number = 1;
   @State pageCount: number = 1;
   @State loading: boolean = false;
-  @State statusText: string = '正在加载分类';
+  @State statusText: string = '';
   @State filterVisible: boolean = false;
   @State filterSelect: Record<string, string> = {};
   @State thumbnailView: boolean = true;
@@ -38,11 +38,12 @@ struct Category {
     await appearanceService.init();
     this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
     this.thumbnailView = (await settingsStore.get<number>(HawkConfig.SEARCH_VIEW, 1)) === 1;
+    this.statusText = this.labels().loadingCategory;
     if (Object.keys(apiConfigService.state.sourceBeanList).length === 0) {
       try {
         await apiConfigService.loadConfigFromSettings(true);
       } catch (error) {
-        this.statusText = `配置加载失败：${errorMessage(error as Error)}`;
+        this.statusText = `${this.labels().configLoadFailedPrefix}${errorMessage(error as Error)}`;
         return;
       }
     }
@@ -55,7 +56,7 @@ struct Category {
       ? apiConfigService.state.sourceBeanList[sourceKey]
       : apiConfigService.state.homeSource;
     if (source === undefined) {
-      this.statusText = '没有可用数据源';
+      this.statusText = this.labels().noSource;
       return;
     }
     this.source = source;
@@ -64,14 +65,14 @@ struct Category {
       const content = await sourceService.getHomeContent(source);
       this.categories = content.classes;
       if (this.categories.length === 0) {
-        this.statusText = '该源没有返回分类';
+        this.statusText = this.labels().noClasses;
         return;
       }
       const requested = this.categories.findIndex((item: MovieSort) => item.sortId === typeId);
       this.categoryIndex = requested >= 0 ? requested : 0;
       await this.loadPage(1, true);
     } catch (error) {
-      this.statusText = `分类加载失败：${errorMessage(error as Error)}`;
+      this.statusText = `${this.labels().loadFailedPrefix}${errorMessage(error as Error)}`;
     }
   }
 
@@ -121,7 +122,7 @@ struct Category {
     this.loading = true;
     if (replace) {
       this.items = [];
-      this.statusText = `正在加载：${category.sortName}`;
+      this.statusText = `${this.labels().loadingPrefix}${category.sortName}`;
     }
     try {
       const result = await sourceService.getCategoryList(source, category.sortId, page, this.filterSelect);
@@ -132,13 +133,13 @@ struct Category {
       this.pageCount = result.pagecount > 0 ? result.pagecount : 1;
       this.items = replace ? result.list : this.items.concat(result.list);
       this.statusText = this.items.length === 0
-        ? '暂无内容'
-        : `${category.sortName} 第 ${this.page}/${this.pageCount} 页，共 ${this.items.length} 条`;
+        ? this.labels().empty
+        : `${this.labels().pageStatusPrefix}${category.sortName}${this.labels().pageStatusMiddle}${this.page}/${this.pageCount}${this.labels().pageStatusCountMiddle}${this.items.length}${this.labels().pageStatusSuffix}`;
     } catch (error) {
       if (seq !== this.loadSeq) {
         return;
       }
-      this.statusText = `加载失败：${errorMessage(error as Error)}`;
+      this.statusText = `${this.labels().loadFailedPrefix}${errorMessage(error as Error)}`;
     } finally {
       if (seq === this.loadSeq) {
         this.loading = false;
@@ -168,6 +169,10 @@ struct Category {
     return appearanceService.themeByIndex(this.themeSelect);
   }
 
+  labels(): CategoryLabels {
+    return appearanceService.categoryLabels();
+  }
+
   @Builder
   vodCard(vod: VodInfo) {
     Column() {
@@ -180,7 +185,7 @@ struct Category {
           .alt($r('app.media.app_icon'))
       } else {
         Column() {
-          Text('无封面').fontSize(14).fontColor(this.theme().subtleText)
+          Text(this.labels().noCover).fontSize(14).fontColor(this.theme().subtleText)
         }
         .width('100%')
         .layoutWeight(1)
@@ -215,19 +220,19 @@ struct Category {
   build() {
     Column() {
       Row() {
-        Text('< 返回')
+        Text(this.labels().back)
           .fontSize(18)
           .fontColor(this.theme().text)
           .focusable(true)
           .onClick(() => router.back())
-        Text(this.source === null ? '分类' : this.source.name)
+        Text(this.source === null ? this.labels().title : this.source.name)
           .fontSize(24)
           .fontWeight(FontWeight.Bold)
           .fontColor(this.theme().text)
           .margin({ left: 24 })
           .layoutWeight(1)
         if (this.currentCategoryHasFilters()) {
-          Button(this.filterVisible ? '收起筛选' : '筛选')
+          Button(this.filterVisible ? this.labels().collapseFilters : this.labels().filters)
             .height(36)
             .margin({ right: 10 })
             .onClick(() => this.filterVisible = !this.filterVisible)
@@ -321,7 +326,7 @@ struct Category {
       if (this.loading) {
         Row() {
           LoadingProgress().width(24).height(24).color(this.theme().primarySoft)
-          Text('加载中').fontSize(14).fontColor(this.theme().mutedText).margin({ left: 10 })
+          Text(this.labels().loading).fontSize(14).fontColor(this.theme().mutedText).margin({ left: 10 })
         }
         .width('100%')
         .justifyContent(FlexAlign.Center)

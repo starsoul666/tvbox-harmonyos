@@ -545,3 +545,64 @@ entry/build/default/outputs/default/entry-default-unsigned.hap
 Expected device replay: switch Settings language between Chinese and English, then open Search,
 FastSearch, History, Favorites, and Push. Confirm static labels, placeholders, empty states, status
 messages, delete-mode hints, counts, and toasts follow the selected language.
+
+## Feature Localization Expansion 2
+
+Static implementation check after extending `HOME_LOCALE` to Drive, Apps, Category, Detail, Play,
+and Live:
+
+```bash
+rg -n "Record<string, Object>|Object\[\]|\(item: Object\)|replaceAll|padStart|TODO|FIXME|Number\.parseInt|console\.log|implicitAny|\bany\b" entry/src/main/ets
+```
+
+Result: no matches.
+
+Build verification:
+
+```bash
+DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk ./scripts/verify-build.sh
+```
+
+Result:
+
+```text
+> hvigor BUILD SUCCESSFUL in 24 s 134 ms
+HAP output:
+entry/build/default/outputs/default/entry-default-unsigned.hap
+```
+
+Expected device replay: switch Settings language between Chinese and English, then open Drive,
+Apps, Category, Detail, Play, and Live. Confirm titles, back buttons, status messages, empty
+states, placeholders, filter chips, episode groups, playback controls, live channel/group
+labels, EPG date buttons, and password dialogs follow the selected language.
+
+## Danmu and External Subtitle Support
+
+Static implementation check after adding `DanmuService`, `SubtitleService`,
+`DanmuOverlay`, `SubtitleOverlay`, danmu Hawk config keys, and Play page integration:
+
+```bash
+rg -n "Record<string, Object>|Object\[\]|\(item: Object\)|replaceAll|padStart|TODO|FIXME|Number\.parseInt|console\.log|implicitAny|\bany\b" entry/src/main/ets
+```
+
+Result: no matches.
+
+Build verification:
+
+```bash
+DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk ./scripts/verify-build.sh
+```
+
+Result:
+
+```text
+> hvigor BUILD SUCCESSFUL in 11 s 453 ms
+HAP output:
+entry/build/default/outputs/default/entry-default-unsigned.hap
+```
+
+Expected device replay: play a type=4 source that returns `danmaku` and `subt` fields in the
+play-result JSON. Confirm danmu scrolls across the video surface synced to playback position,
+and the subtitle text appears at the bottom timed to the video. Toggle danmu and subtitle on/off
+via the control buttons. Adjust danmu settings (speed, max lines, alpha, size, color) via Hawk
+keys and confirm the overlay respects the changes on next playback.

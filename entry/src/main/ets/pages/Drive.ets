@@ -3,7 +3,7 @@ import promptAction from '@ohos.promptAction';
 import { HawkConfig } from '../constants/HawkConfig';
 import { DriveFileItem, DriveType, StorageDrive, VodInfo } from '../models/TvBoxModels';
 import { PlayerConfig } from '../domain/playback/PlayerConfig';
-import { appearanceService, ThemePalette } from '../services/AppearanceService';
+import { appearanceService, DriveLabels, ThemePalette } from '../services/AppearanceService';
 import { driveDataStore } from '../services/DriveDataStore';
 import { driveService } from '../services/DriveService';
 import { settingsStore } from '../services/SettingsStore';
@@ -25,7 +25,7 @@ struct Drive {
   @State passwordInput: string = '';
   @State initPathInput: string = '/';
   @State editDriveId: number = 0;
-  @State statusText: string = '支持添加本地目录、Alist、WebDAV 并浏览播放视频文件';
+  @State statusText: string = '';
   @State loading: boolean = false;
   @State sortType: number = 0;
   @State searchKeyword: string = '';
@@ -40,6 +40,7 @@ struct Drive {
     await appearanceService.init();
     this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
     this.sortType = await settingsStore.get<number>(HawkConfig.STORAGE_DRIVE_SORT, 0);
+    this.statusText = this.labels().initialStatus;
     this.refreshDrives();
   }
 
@@ -51,7 +52,7 @@ struct Drive {
     const name = this.nameInput.trim();
     const url = this.urlInput.trim();
     if (name.length === 0 || (this.driveTypeInput !== DriveType.LOCAL && url.length === 0)) {
-      this.statusText = this.driveTypeInput === DriveType.LOCAL ? '请填写本地目录绝对路径' : '请填写名称和网盘地址';
+      this.statusText = this.driveTypeInput === DriveType.LOCAL ? this.labels().needLocalPath : this.labels().needNameAndUrl;
       promptAction.showToast({ message: this.statusText });
       return;
     }
@@ -86,7 +87,7 @@ struct Drive {
 
   editDrive(drive: StorageDrive): void {
     if (drive.type !== DriveType.LOCAL && drive.type !== DriveType.ALISTWEB && drive.type !== DriveType.WEBDAV) {
-      this.statusText = '当前仅支持编辑本地目录、Alist、WebDAV 配置';
+      this.statusText = this.labels().editUnsupported;
       return;
     }
     this.editDriveId = drive.id;
@@ -112,12 +113,12 @@ struct Drive {
       this.passwordInput = config.password;
       this.initPathInput = config.initPath;
     }
-    this.statusText = `正在编辑：${drive.name}`;
+    this.statusText = `${this.labels().editingPrefix}${drive.name}`;
   }
 
   resetEditor(): void {
     this.clearEditorFields();
-    this.statusText = '已清空编辑区';
+    this.statusText = this.labels().editorCleared;
   }
 
   clearEditorFields(): void {
@@ -136,7 +137,7 @@ struct Drive {
     if (drive.type !== DriveType.LOCAL && drive.type !== DriveType.ALISTWEB && drive.type !== DriveType.WEBDAV) {
       this.items = [];
       this.allItems = [];
-      this.statusText = '未知网盘类型';
+      this.statusText = this.labels().unknownType;
       return;
     }
     if (drive.type === DriveType.LOCAL) {
@@ -154,11 +155,11 @@ struct Drive {
       return;
     }
     if (this.selectedDrive.type !== DriveType.LOCAL && this.selectedDrive.type !== DriveType.ALISTWEB && this.selectedDrive.type !== DriveType.WEBDAV) {
-      this.statusText = '未知网盘类型';
+      this.statusText = this.labels().unknownType;
       return;
     }
     this.loading = true;
-    this.statusText = `正在加载：${this.currentPath}`;
+    this.statusText = `${this.labels().loadingPathPrefix}${this.currentPath}`;
     try {
       let list: DriveFileItem[] = [];
       if (this.selectedDrive.type === DriveType.LOCAL) {
@@ -170,11 +171,11 @@ struct Drive {
       }
       this.allItems = driveService.sortItems(list, this.sortType);
       this.applySearchFilter();
-      this.statusText = `已加载 ${this.allItems.length} 项：${this.currentPath}`;
+      this.statusText = `${this.labels().loadedCountPrefix}${this.allItems.length}${this.labels().loadedCountMiddle}${this.currentPath}`;
     } catch (error) {
       this.items = [];
       this.allItems = [];
-      this.statusText = `加载失败：${errorMessage(error)}`;
+      this.statusText = `${this.labels().loadFailedPrefix}${errorMessage(error)}`;
     } finally {
       this.loading = false;
     }
@@ -192,12 +193,12 @@ struct Drive {
     if (keyword.length === 0) {
       this.items = this.allItems;
       if (this.selectedDrive !== null) {
-        this.statusText = `已加载 ${this.allItems.length} 项：${this.currentPath}`;
+        this.statusText = `${this.labels().loadedCountPrefix}${this.allItems.length}${this.labels().loadedCountMiddle}${this.currentPath}`;
       }
       return;
     }
     this.items = this.allItems.filter((item: DriveFileItem) => item.name.toLowerCase().includes(keyword));
-    this.statusText = `搜索 "${this.searchKeyword.trim()}"：${this.items.length}/${this.allItems.length} 项`;
+    this.statusText = `${this.labels().searchResultPrefix}${this.searchKeyword.trim()}${this.labels().searchResultMiddle}${this.items.length}/${this.allItems.length}${this.labels().searchResultSuffix}`;
   }
 
   updateSearchKeyword(value: string): void {
@@ -220,7 +221,7 @@ struct Drive {
       return;
     }
     if (!driveService.isVideoFile(item)) {
-      this.statusText = `非视频文件：${item.name}`;
+      this.statusText = `${this.labels().nonVideoPrefix}${item.name}`;
       return;
     }
     let fileUrl = '';
@@ -285,7 +286,7 @@ struct Drive {
       this.items = [];
       this.allItems = [];
       this.searchKeyword = '';
-      this.statusText = '已回到网盘列表';
+      this.statusText = this.labels().backToList;
       return;
     }
     this.currentPath = parent;
@@ -299,7 +300,7 @@ struct Drive {
       this.items = [];
       this.allItems = [];
       this.searchKeyword = '';
-      this.statusText = '已删除当前网盘';
+      this.statusText = this.labels().deletedCurrent;
     }
     if (this.editDriveId === drive.id) {
       this.resetEditor();
@@ -308,43 +309,50 @@ struct Drive {
   }
 
   sortName(): string {
+    const l = this.labels();
     switch (this.sortType) {
       case 1:
-        return '名称降序';
+        return this.labels().sortNameDesc;
       case 2:
-        return '时间升序';
+        return this.labels().sortTimeAsc;
       case 3:
-        return '时间降序';
+        return this.labels().sortTimeDesc;
       default:
-        return '名称升序';
+        return this.labels().sortNameAsc;
     }
   }
 
   browserTitle(): string {
     if (this.selectedDrive === null) {
-      return '网盘列表';
+      return this.labels().listTitle;
     }
     return `${this.selectedDrive.name}  ${this.currentPath}`;
   }
 
   driveTypeName(type: number): string {
+    const l = this.labels();
     if (type === DriveType.LOCAL) {
-      return '本地目录';
+      return l.driveTypeLocal;
     }
     if (type === DriveType.WEBDAV) {
-      return 'WebDAV';
+      return l.driveTypeWebDav;
     }
     if (type === DriveType.ALISTWEB) {
-      return 'Alist网页';
+      return l.driveTypeAlist;
     }
-    return `类型 ${type}`;
+    return `${l.driveTypeUnknownPrefix}${type}`;
   }
 
   driveTypeInputName(): string {
+    const l = this.labels();
     if (this.driveTypeInput === DriveType.LOCAL) {
-      return '本地目录';
+      return l.driveTypeLocal;
     }
-    return this.driveTypeInput === DriveType.WEBDAV ? 'WebDAV' : 'Alist';
+    return this.driveTypeInput === DriveType.WEBDAV ? l.driveTypeWebDav : this.labels().alist;
+  }
+
+  labels(): DriveLabels {
+    return appearanceService.driveLabels();
   }
 
   theme(): ThemePalette {
@@ -355,17 +363,17 @@ struct Drive {
   build() {
     Column() {
       Row() {
-        Text('< 返回')
+        Text(this.labels().back)
           .fontSize(18)
           .fontColor(this.theme().text)
           .onClick(() => router.back())
-        Text('网盘')
+        Text(this.labels().title)
           .fontSize(30)
           .fontWeight(FontWeight.Bold)
           .fontColor(this.theme().text)
           .margin({ left: 24 })
           .layoutWeight(1)
-        Button(`排序：${this.sortName()}`)
+        Button(`${this.labels().sortPrefix}${this.sortName()}`)
           .height(40)
           .onClick(() => this.changeSortType())
       }
@@ -380,29 +388,29 @@ struct Drive {
 
       Row() {
         Column() {
-          Text(`${this.editDriveId > 0 ? '编辑' : '添加'}${this.driveTypeInputName()}`)
+          Text(`${this.editDriveId > 0 ? this.labels().editPrefix : this.labels().addPrefix}${this.driveTypeInputName()}`)
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.theme().text)
           if (this.editDriveId > 0) {
-            Text(`编辑记录 #${this.editDriveId}`)
+            Text(`${this.labels().editRecordPrefix}${this.editDriveId}`)
               .fontSize(13)
               .fontColor(this.theme().mutedText)
               .margin({ top: 6 })
           }
           Row() {
-            Button('本地')
+            Button(this.labels().local)
               .height(36)
               .layoutWeight(1)
               .backgroundColor(this.driveTypeInput === DriveType.LOCAL ? this.theme().primary : this.theme().cardActiveBg)
               .onClick(() => this.driveTypeInput = DriveType.LOCAL)
-            Button('Alist')
+            Button(this.labels().alist)
               .height(36)
               .layoutWeight(1)
               .margin({ left: 10 })
               .backgroundColor(this.driveTypeInput === DriveType.ALISTWEB ? this.theme().primary : this.theme().cardActiveBg)
               .onClick(() => this.driveTypeInput = DriveType.ALISTWEB)
-            Button('WebDAV')
+            Button(this.labels().webDav)
               .height(36)
               .layoutWeight(1)
               .margin({ left: 10 })
@@ -412,7 +420,7 @@ struct Drive {
           .margin({ top: 12 })
           TextInput({
             text: this.nameInput,
-            placeholder: this.driveTypeInput === DriveType.LOCAL ? '本地目录绝对路径，例如 /data/storage/el2/base/files' : '名称'
+            placeholder: this.driveTypeInput === DriveType.LOCAL ? this.labels().namePlaceholderLocal : this.labels().namePlaceholder
           })
             .height(44)
             .fontSize(15)
@@ -422,15 +430,15 @@ struct Drive {
             TextInput({
               text: this.urlInput,
               placeholder: this.driveTypeInput === DriveType.WEBDAV
-                ? 'WebDAV 地址，例如 https://example.com/dav'
-                : 'Alist 地址，例如 https://alist.example.com'
+                ? this.labels().urlPlaceholderWebDav
+                : this.labels().urlPlaceholderAlist
             })
               .height(44)
               .fontSize(15)
               .margin({ top: 10 })
               .onChange((value: string) => this.urlInput = value)
             if (this.driveTypeInput === DriveType.WEBDAV) {
-              TextInput({ text: this.usernameInput, placeholder: 'WebDAV 用户名，可为空' })
+              TextInput({ text: this.usernameInput, placeholder: this.labels().usernamePlaceholder })
                 .height(44)
                 .fontSize(15)
                 .margin({ top: 10 })
@@ -438,29 +446,29 @@ struct Drive {
             }
             TextInput({
               text: this.passwordInput,
-              placeholder: this.driveTypeInput === DriveType.WEBDAV ? 'WebDAV 密码，可为空' : '访问密码，可为空'
+              placeholder: this.driveTypeInput === DriveType.WEBDAV ? this.labels().passwordPlaceholderWebDav : this.labels().passwordPlaceholderAlist
             })
               .height(44)
               .fontSize(15)
               .margin({ top: 10 })
               .onChange((value: string) => this.passwordInput = value)
-            TextInput({ text: this.initPathInput, placeholder: '初始路径，默认 /' })
+            TextInput({ text: this.initPathInput, placeholder: this.labels().initPathPlaceholder })
               .height(44)
               .fontSize(15)
               .margin({ top: 10 })
               .onChange((value: string) => this.initPathInput = value)
           } else {
-            Text('HarmonyOS Next 受系统沙箱限制，普通应用通常只能读取授权目录或应用可访问目录；这里先提供 Android StorageDrive 兼容的本地路径记录与浏览。')
+            Text(this.labels().sandboxNotice)
               .fontSize(12)
               .fontColor(this.theme().mutedText)
               .margin({ top: 10 })
           }
           Row() {
-            Button(this.editDriveId > 0 ? '保存修改' : '保存并打开')
+            Button(this.editDriveId > 0 ? this.labels().saveEdit : this.labels().saveAndOpen)
               .height(42)
               .layoutWeight(1)
               .onClick(() => this.saveDrive())
-            Button('清空')
+            Button(this.labels().clear)
               .height(42)
               .margin({ left: 10 })
               .onClick(() => this.resetEditor())
@@ -482,7 +490,7 @@ struct Drive {
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
             if (this.selectedDrive !== null) {
-              Button('上级')
+              Button(this.labels().parent)
                 .height(38)
                 .onClick(() => this.goUp())
             }
@@ -491,7 +499,7 @@ struct Drive {
 
           if (this.selectedDrive === null) {
             if (this.drives.length === 0) {
-              Text('暂无网盘，先添加一个本地目录、Alist 或 WebDAV。')
+              Text(this.labels().emptyDrives)
                 .fontSize(16)
                 .fontColor(this.theme().mutedText)
                 .margin({ top: 24 })
@@ -513,14 +521,14 @@ struct Drive {
                       }
                       .alignItems(HorizontalAlign.Start)
                       .layoutWeight(1)
-                      Button('打开')
+                      Button(this.labels().open)
                         .height(36)
                         .onClick(() => this.openDrive(drive))
-                      Button('编辑')
+                      Button(this.labels().edit)
                         .height(36)
                         .margin({ left: 10 })
                         .onClick(() => this.editDrive(drive))
-                      Button('删除')
+                      Button(this.labels().delete)
                         .height(36)
                         .margin({ left: 10 })
                         .backgroundColor('#7f1d1d')
@@ -539,12 +547,12 @@ struct Drive {
             }
           } else {
             Row() {
-              TextInput({ text: this.searchKeyword, placeholder: '搜索当前目录文件名' })
+              TextInput({ text: this.searchKeyword, placeholder: this.labels().searchPlaceholder })
                 .height(40)
                 .fontSize(14)
                 .layoutWeight(1)
                 .onChange((value: string) => this.updateSearchKeyword(value))
-              Button('清空')
+              Button(this.labels().clear)
                 .height(40)
                 .margin({ left: 10 })
                 .enabled(this.searchKeyword.trim().length > 0)
@@ -557,7 +565,7 @@ struct Drive {
           if (this.selectedDrive !== null && this.loading) {
             Column() {
               LoadingProgress().width(48).height(48).color(this.theme().primarySoft)
-              Text('加载中...')
+              Text(this.labels().loading)
                 .fontSize(15)
                 .fontColor(this.theme().mutedText)
                 .margin({ top: 12 })
@@ -565,7 +573,7 @@ struct Drive {
             .layoutWeight(1)
             .justifyContent(FlexAlign.Center)
           } else if (this.selectedDrive !== null && this.items.length === 0) {
-            Text(this.allItems.length > 0 ? '没有匹配项' : '当前目录为空')
+            Text(this.allItems.length > 0 ? this.labels().noMatch : this.labels().emptyDir)
               .fontSize(16)
               .fontColor(this.theme().mutedText)
               .margin({ top: 24 })
@@ -584,14 +592,14 @@ struct Drive {
                         .fontColor(this.theme().text)
                         .maxLines(1)
                         .textOverflow({ overflow: TextOverflow.Ellipsis })
-                      Text(`${item.isFile ? item.fileType : '目录'} ${driveService.formatTime(item.lastModified)}`)
+                      Text(`${item.isFile ? item.fileType : this.labels().folderBadge} ${driveService.formatTime(item.lastModified)}`)
                         .fontSize(12)
                         .fontColor(this.theme().mutedText)
                         .margin({ top: 5 })
                     }
                     .alignItems(HorizontalAlign.Start)
                     .layoutWeight(1)
-                    Text(item.isFile ? (driveService.isVideoFile(item) ? '播放' : '文件') : '打开')
+                    Text(item.isFile ? (driveService.isVideoFile(item) ? this.labels().play : this.labels().file) : this.labels().enterFolder)
                       .fontSize(14)
                       .fontColor(this.theme().primarySoft)
                   }

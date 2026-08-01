@@ -9,6 +9,10 @@ export interface PlaybackResolveResult {
   status: string;
   warning?: string;
   headers?: HttpHeaders;
+  /** Bilibili XML danmu URL or raw XML, from the source's `danmaku` field. */
+  danmu?: string;
+  /** Subtitle URL or raw SRT/VTT, from the source's `subt` or `subs` field. */
+  subt?: string;
 }
 
 export class PlaybackService {
@@ -99,6 +103,8 @@ export class PlaybackService {
     const parse = safeString(root, 'parse', '1') === '1';
     const jx = safeString(root, 'jx', '0') === '1';
     const warning = this.subtitleWarning(root);
+    const danmu = this.extractDanmu(root);
+    const subt = this.extractSubtitle(root);
 
     if (parse || jx) {
       const useUserParse = (playUrl.length === 0 && apiConfigService.state.vipParseFlags.includes(playFlag)) || jx;
@@ -110,7 +116,9 @@ export class PlaybackService {
         parseName: result.parseName,
         status: `type=4 ${result.status}`,
         warning: this.joinWarning(result.warning, warning),
-        headers: result.headers
+        headers: result.headers,
+        danmu,
+        subt
       };
     }
 
@@ -119,7 +127,9 @@ export class PlaybackService {
       parseName: 'type=4',
       status: 'type=4 播放接口直连',
       warning,
-      headers: this.parsePlaybackHeaders(root)
+      headers: this.parsePlaybackHeaders(root),
+      danmu,
+      subt
     };
   }
 
@@ -139,7 +149,9 @@ export class PlaybackService {
       url,
       parseName: parse.name,
       status: `解析成功：${parse.name}`,
-      headers: this.parsePlaybackHeaders(root)
+      headers: this.parsePlaybackHeaders(root),
+      danmu: this.extractDanmu(root),
+      subt: this.extractSubtitle(root)
     };
   }
 
@@ -274,11 +286,36 @@ export class PlaybackService {
   }
 
   private subtitleWarning(root: Record<string, unknown>): string {
-    const subtitle = safeString(root, 'subt');
-    if (subtitle.length > 0 || root['subs'] !== undefined) {
-      return '播放接口返回字幕信息，字幕渲染待迁移';
-    }
     return '';
+  }
+
+  /** Extracts the `danmaku` field (URL or raw XML) from a play result. */
+  private extractDanmu(root: Record<string, unknown>): string | undefined {
+    const danmu = safeString(root, 'danmaku');
+    return danmu.length > 0 ? danmu : undefined;
+  }
+
+  /**
+   * Extracts subtitle info from a play result.
+   * Checks `subt` (direct URL) first, then `subs` array (first entry's `url`).
+   */
+  private extractSubtitle(root: Record<string, unknown>): string | undefined {
+    const subt = safeString(root, 'subt');
+    if (subt.length > 0) {
+      return subt;
+    }
+    const subs = root['subs'];
+    if (subs !== undefined && Array.isArray(subs)) {
+      const subsArray = subs as unknown[];
+      if (subsArray.length > 0) {
+        const first = asRecord(subsArray[0]);
+        const url = safeString(first, 'url');
+        if (url.length > 0) {
+          return url;
+        }
+      }
+    }
+    return undefined;
   }
 
   private joinWarning(left: string | undefined, right: string): string | undefined {

@@ -60,6 +60,11 @@ struct Settings {
   @State liveShowNetSpeed: boolean = false;
   @State liveSkipPassword: boolean = false;
   @State liveConnectTimeout: number = 1;
+  @State proxyServer: string = '';
+  @State homeSearchPosition: boolean = false;
+  @State homeMenuPosition: boolean = true;
+  @State homeRecStyle: boolean = false;
+  @State backupList: string[] = [];
 
   aboutToAppear(): void {
     this.initPage();
@@ -101,6 +106,11 @@ struct Settings {
     this.liveShowNetSpeed = await settingsStore.get<boolean>(HawkConfig.LIVE_SHOW_NET_SPEED, false);
     this.liveSkipPassword = await settingsStore.get<boolean>(HawkConfig.LIVE_SKIP_PASSWORD, false);
     this.liveConnectTimeout = await settingsStore.get<number>(HawkConfig.LIVE_CONNECT_TIMEOUT, 1);
+    this.proxyServer = await settingsStore.get<string>(HawkConfig.PROXY_SERVER, '');
+    this.homeSearchPosition = await settingsStore.get<boolean>(HawkConfig.HOME_SEARCH_POSITION, false);
+    this.homeMenuPosition = await settingsStore.get<boolean>(HawkConfig.HOME_MENU_POSITION, true);
+    this.homeRecStyle = await settingsStore.get<boolean>(HawkConfig.HOME_REC_STYLE, false);
+    this.backupList = settingsStore.listBackups();
 
     this.refreshSources();
   }
@@ -211,6 +221,44 @@ struct Settings {
   async clearSearchRecords(): Promise<void> {
     vodDataStore.clearSearchKeywords();
     promptAction.showToast({ message: this.labels().searchHistoryCleared });
+  }
+
+  async createBackup(): Promise<void> {
+    const name = await settingsStore.createBackup();
+    if (name.length > 0) {
+      this.backupList = settingsStore.listBackups();
+      promptAction.showToast({ message: this.labels().backupCreated });
+    } else {
+      promptAction.showToast({ message: this.labels().backupFailed });
+    }
+  }
+
+  async restoreBackup(fileName: string): Promise<void> {
+    const ok = await settingsStore.restoreBackup(fileName);
+    if (ok) {
+      promptAction.showToast({ message: this.labels().backupRestored });
+      await this.initPage();
+    } else {
+      promptAction.showToast({ message: this.labels().backupFailed });
+    }
+  }
+
+  deleteBackupEntry(fileName: string): void {
+    settingsStore.deleteBackup(fileName);
+    this.backupList = settingsStore.listBackups();
+  }
+
+  async resetApp(): Promise<void> {
+    await settingsStore.clearAll();
+    vodDataStore.deleteVodRecordAll();
+    vodDataStore.deleteVodCollectAll();
+    vodDataStore.clearSearchKeywords();
+    this.apiUrl = '';
+    this.liveUrl = '';
+    this.epgUrl = '';
+    this.panel = '';
+    await this.initPage();
+    promptAction.showToast({ message: this.labels().resetDone });
   }
 
   togglePanel(name: string): void {
@@ -408,6 +456,14 @@ struct Settings {
                 this.epgUrl = value;
                 this.putString(HawkConfig.EPG_URL, value);
               })
+            TextInput({ text: this.proxyServer, placeholder: this.labels().proxyPlaceholder })
+              .height(46)
+              .fontSize(15)
+              .margin({ top: 10 })
+              .onChange((value: string) => {
+                this.proxyServer = value;
+                this.putString(HawkConfig.PROXY_SERVER, value);
+              })
           }
           .width('100%')
           .padding(18)
@@ -437,6 +493,18 @@ struct Settings {
               this.putNumber(HawkConfig.HOME_NUM, index);
             })
           }
+          this.switchRow(this.labels().searchPosition, HawkConfig.HOME_SEARCH_POSITION, this.homeSearchPosition, (next: boolean) => {
+            this.homeSearchPosition = next;
+            this.putBoolean(HawkConfig.HOME_SEARCH_POSITION, next);
+          })
+          this.switchRow(this.labels().menuPosition, HawkConfig.HOME_MENU_POSITION, this.homeMenuPosition, (next: boolean) => {
+            this.homeMenuPosition = next;
+            this.putBoolean(HawkConfig.HOME_MENU_POSITION, next);
+          })
+          this.switchRow(this.labels().recStyle, HawkConfig.HOME_REC_STYLE, this.homeRecStyle, (next: boolean) => {
+            this.homeRecStyle = next;
+            this.putBoolean(HawkConfig.HOME_REC_STYLE, next);
+          })
 
           this.sectionTitle(this.labels().player)
           this.optionRow(this.labels().scale, HawkConfig.PLAY_SCALE, this.optionLabel(ScaleOptions, this.playScale), 'playScale')
@@ -577,7 +645,44 @@ struct Settings {
             Button(this.labels().clearSearchHistory).height(40).margin({ left: 10 }).onClick(() => this.clearSearchRecords())
           }
           .width('100%')
-          .margin({ top: 8, bottom: 40 })
+          .margin({ top: 8 })
+
+          Row() {
+            Button(this.labels().backup).height(40).onClick(() => this.createBackup())
+            Button(this.labels().restore).height(40).margin({ left: 10 }).onClick(() => this.togglePanel('backupList'))
+            Button(this.labels().resetApp).height(40).margin({ left: 10 }).onClick(() => this.resetApp())
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          if (this.panel === 'backupList') {
+            Column() {
+              if (this.backupList.length === 0) {
+                Text(this.labels().noBackup)
+                  .fontSize(14)
+                  .fontColor(this.theme().mutedText)
+                  .padding({ top: 8, bottom: 8 })
+              } else {
+                ForEach(this.backupList, (item: string) => {
+                  Row() {
+                    Text(item)
+                      .fontSize(13)
+                      .fontColor(this.theme().text)
+                      .layoutWeight(1)
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    Button(this.labels().restore).height(32).fontSize(12).margin({ right: 8 }).onClick(() => this.restoreBackup(item))
+                    Button('删除').height(32).fontSize(12).onClick(() => this.deleteBackupEntry(item))
+                  }
+                  .width('100%')
+                  .padding({ top: 6, bottom: 6 })
+                }, (item: string) => item)
+              }
+            }
+            .width('100%')
+            .margin({ top: 8 })
+          }
+          Blank().height(40)
         }
         .width('100%')
       }

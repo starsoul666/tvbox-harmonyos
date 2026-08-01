@@ -23,7 +23,8 @@ DevEco Studio and let it sync `oh-package.json5` / `hvigorfile.ts`.
   one `PlaybackSession`.
 - **Player controls** — play/pause, seek, prev/next episode, episode picker, speed, display
   scale, audio/subtitle track selection, skip intro/outro with auto-advance, parse switching,
-  D-pad navigation. Per-VOD settings persist in the Android `playerCfg` JSON shape.
+  D-pad navigation, danmu overlay (Bilibili XML), external subtitle overlay (SRT/VTT).
+  Per-VOD settings persist in the Android `playerCfg` JSON shape.
 - **Config loading** — TVBox JSON configs including image/Base64 embedded, `;pk;` AES ECB,
   `2423` AES CBC, `./` relative rewrite, and `MD5(apiUrl)` disk cache fallback.
 - **Sources** — type=0 XML, type=1 JSON and type=4 API for home, category, detail, search and
@@ -44,9 +45,9 @@ Native (C++/NAPI) or privileged-API subsystems. See `docs/android-parity.md` for
 - WebView sniffing (parse type=0) and parse types 2/3/SuperParse
 - Local HTTP server: inbound push, remote-control UI, `clan://localhost` proxy
 - FFmpeg fallback player, P2P/Thunder protocols
-- Danmu rendering, external subtitle search
+- Danmu rendering is implemented (Bilibili XML); remote subtitle search (assrt.net) and ASS/STL formats are not
 - Installed-app enumeration and uninstall (privileged HarmonyOS APIs)
-- Theme and locale switching are persisted but not applied
+- Theme and locale switching are persisted and applied across all pages
 
 ## Main Android references
 

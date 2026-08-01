@@ -27,6 +27,12 @@ export const AndroidCompatibleDefaults: SettingDefault[] = [
   { key: HawkConfig.IJK_CODEC, value: '硬解码', label: 'IJK 解码', group: '播放器' },
   { key: HawkConfig.PLAY_TIME_STEP, value: 5, label: '快进步长', group: '播放器' },
   { key: HawkConfig.VIDEO_PURIFY, value: true, label: '广告过滤', group: '播放器' },
+  { key: HawkConfig.DANMU_OPEN, value: true, label: '弹幕开关', group: '播放器' },
+  { key: HawkConfig.DANMU_MAXLINE, value: 3, label: '弹幕行数', group: '播放器' },
+  { key: HawkConfig.DANMU_SPEED, value: 1.5, label: '弹幕速度', group: '播放器' },
+  { key: HawkConfig.DANMU_ALPHA, value: 0.9, label: '弹幕透明度', group: '播放器' },
+  { key: HawkConfig.DANMU_SIZESCALE, value: 0.8, label: '弹幕字号', group: '播放器' },
+  { key: HawkConfig.DANMU_COLOR, value: false, label: '弹幕彩色', group: '播放器' },
 
   { key: HawkConfig.HOME_LOCALE, value: 0, label: '语言', group: '系统' },
   { key: HawkConfig.THEME_SELECT, value: 0, label: '主题', group: '系统' },

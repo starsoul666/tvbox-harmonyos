@@ -4,7 +4,7 @@ import { HawkConfig } from '../constants/HawkConfig';
 import { visibleOrder, toSourceIndex } from '../domain/playback/PlaybackOrder';
 import { SourceBean, SourceSearchResult, VodInfo, VodSeries, VodSeriesFlag } from '../models/TvBoxModels';
 import { apiConfigService } from '../services/ApiConfigService';
-import { appearanceService, ThemePalette } from '../services/AppearanceService';
+import { appearanceService, DetailLabels, ThemePalette } from '../services/AppearanceService';
 import { settingsStore } from '../services/SettingsStore';
 import { sourceService } from '../services/SourceService';
 import { vodDataStore } from '../services/VodDataStore';
@@ -35,7 +35,7 @@ struct Detail {
   @State sourceName: string = '';
   @State vod: VodInfo | null = null;
   @State loading: boolean = false;
-  @State statusText: string = '等待详情参数';
+  @State statusText: string = '';
   @State isCollect: boolean = false;
   @State flagIndex: number = 0;
   @State reverseSort: boolean = false;
@@ -54,12 +54,13 @@ struct Detail {
     await settingsStore.init(getContext(this));
     await appearanceService.init();
     this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
+    this.statusText = this.labels().waitingParams;
     const rawParams = router.getParams();
     const params = rawParams === undefined ? {} as Record<string, string> : rawParams as Record<string, string>;
     this.sourceKey = params['sourceKey'] === undefined ? '' : String(params['sourceKey']);
     this.vodId = params['vodId'] === undefined ? '' : String(params['vodId']);
     if (this.sourceKey.length === 0 || this.vodId.length === 0) {
-      this.statusText = '缺少 sourceKey 或 vodId';
+      this.statusText = this.labels().missingParams;
       return;
     }
 
@@ -67,7 +68,7 @@ struct Detail {
       try {
         await apiConfigService.loadConfigFromSettings(true);
       } catch (error) {
-        this.statusText = `配置加载失败：${errorMessage(error as Error)}`;
+        this.statusText = `${this.labels().configLoadFailedPrefix}${errorMessage(error as Error)}`;
         return;
       }
     }
@@ -77,7 +78,7 @@ struct Detail {
     }
     const source = apiConfigService.state.sourceBeanList[this.sourceKey];
     if (source === undefined) {
-      this.statusText = `找不到数据源：${this.sourceKey}`;
+      this.statusText = `${this.labels().sourceNotFoundPrefix}${this.sourceKey}`;
       return;
     }
     this.sourceName = source.name;
@@ -86,22 +87,22 @@ struct Detail {
 
   async loadDetail(source: SourceBean): Promise<void> {
     this.loading = true;
-    this.statusText = `正在加载详情：${this.sourceName}`;
+    this.statusText = `${this.labels().loadingDetailPrefix}${this.sourceName}`;
     try {
       const detail = await sourceService.getDetail(source, this.vodId);
       if (detail === undefined) {
         this.vod = null;
-        this.statusText = '详情为空';
+        this.statusText = this.labels().detailEmpty;
       } else {
         this.vod = detail;
         this.flagIndex = 0;
         this.isCollect = vodDataStore.isVodCollect(this.sourceKey, detail.id);
-        this.statusText = `已加载：${this.sourceName}`;
+        this.statusText = `${this.labels().loadedPrefix}${this.sourceName}`;
         this.restoreHistoryPosition(detail);
       }
     } catch (error) {
       this.vod = null;
-      this.statusText = `详情加载失败：${errorMessage(error as Error)}`;
+      this.statusText = `${this.labels().detailLoadFailedPrefix}${errorMessage(error as Error)}`;
     } finally {
       this.loading = false;
     }
@@ -128,11 +129,11 @@ struct Detail {
     if (this.isCollect) {
       vodDataStore.deleteVodCollectByVod(this.sourceKey, this.vod.id);
       this.isCollect = false;
-      promptAction.showToast({ message: '已取消收藏' });
+      promptAction.showToast({ message: this.labels().collectRemoved });
     } else {
       vodDataStore.insertVodCollect(this.sourceKey, this.vod);
       this.isCollect = true;
-      promptAction.showToast({ message: '已收藏' });
+      promptAction.showToast({ message: this.labels().collectAdded });
     }
   }
 
@@ -210,7 +211,7 @@ struct Detail {
     this.searchingSources = true;
     this.candidates = [];
     const keyword = this.vod.name;
-    this.statusText = `正在其他源搜索：${keyword}`;
+    this.statusText = `${this.labels().searchingOtherPrefix}${keyword}`;
     try {
       const results = await sourceService.searchAll(keyword, true);
       const found: SourceCandidate[] = [];
@@ -232,9 +233,9 @@ struct Detail {
         }
       }
       this.candidates = found;
-      this.statusText = found.length > 0 ? `其他源找到 ${found.length} 条` : '其他源没有结果';
+      this.statusText = found.length > 0 ? `${this.labels().otherFoundPrefix}${found.length}` : this.labels().otherNoResult;
     } catch (error) {
-      this.statusText = `换源搜索失败：${errorMessage(error as Error)}`;
+      this.statusText = `${this.labels().changeSourceFailedPrefix}${errorMessage(error as Error)}`;
     } finally {
       this.searchingSources = false;
     }
@@ -257,7 +258,7 @@ struct Detail {
     const flag = this.currentFlag();
     const series = this.currentSeries();
     if (flag === undefined || series.length === 0) {
-      promptAction.showToast({ message: '没有可推送的播放地址' });
+      promptAction.showToast({ message: this.labels().noPushUrl });
       return;
     }
     router.pushUrl({
@@ -278,15 +279,19 @@ struct Detail {
     return appearanceService.themeByIndex(this.themeSelect);
   }
 
+  labels(): DetailLabels {
+    return appearanceService.detailLabels();
+  }
+
   build() {
     Column() {
       Row() {
-        Text('< 返回')
+        Text(this.labels().back)
           .fontSize(18)
           .fontColor(this.theme().text)
           .focusable(true)
           .onClick(() => router.back())
-        Text('详情')
+        Text(this.labels().title)
           .fontSize(26)
           .fontWeight(FontWeight.Bold)
           .fontColor(this.theme().text)
@@ -298,16 +303,16 @@ struct Detail {
           .layoutWeight(1)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Button(this.searchingSources ? '搜索中' : '换源')
+        Button(this.searchingSources ? this.labels().searching : this.labels().changeSource)
           .height(38)
           .enabled(this.vod !== null && !this.searchingSources)
           .onClick(() => this.searchOtherSources())
-        Button('推送')
+        Button(this.labels().push)
           .height(38)
           .margin({ left: 10 })
           .enabled(this.vod !== null)
           .onClick(() => this.pushToRemote())
-        Button(this.isCollect ? '取消收藏' : '收藏')
+        Button(this.isCollect ? this.labels().uncollect : this.labels().collect)
           .height(38)
           .margin({ left: 10 })
           .enabled(this.vod !== null)
@@ -327,11 +332,11 @@ struct Detail {
       if (this.showCandidates) {
         Column() {
           Row() {
-            Text(`换源结果 ${this.candidates.length}`)
+            Text(`${this.labels().candidatesPrefix}${this.candidates.length}`)
               .fontSize(16)
               .fontColor(this.theme().text)
               .layoutWeight(1)
-            Text('关闭')
+            Text(this.labels().close)
               .fontSize(14)
               .fontColor('#fca5a5')
               .focusable(true)
@@ -381,14 +386,14 @@ struct Detail {
       if (this.loading) {
         Column() {
           LoadingProgress().width(48).height(48).color(this.theme().primarySoft)
-          Text('加载中...').fontSize(16).fontColor(this.theme().mutedText).margin({ top: 12 })
+          Text(this.labels().loading).fontSize(16).fontColor(this.theme().mutedText).margin({ top: 12 })
         }
         .width('100%')
         .layoutWeight(1)
         .justifyContent(FlexAlign.Center)
       } else if (this.vod === null) {
         Column() {
-          Text('暂无详情数据').fontSize(18).fontColor(this.theme().mutedText)
+          Text(this.labels().empty).fontSize(18).fontColor(this.theme().mutedText)
         }
         .width('100%')
         .layoutWeight(1)
@@ -406,7 +411,7 @@ struct Detail {
                   .alt($r('app.media.app_icon'))
               } else {
                 Column() {
-                  Text('无封面').fontSize(16).fontColor(this.theme().mutedText)
+                  Text(this.labels().noCover).fontSize(16).fontColor(this.theme().mutedText)
                 }
                 .width(150)
                 .height(210)
@@ -421,7 +426,7 @@ struct Detail {
                   .fontColor(this.theme().text)
                   .maxLines(2)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
-                Text(`${this.valueOr(this.vod.type, '未知类型')} ${this.vod.year === undefined ? '' : this.vod.year} ${this.valueOrEmpty(this.vod.area)}`)
+                Text(`${this.valueOr(this.vod.type, this.labels().unknownType)} ${this.vod.year === undefined ? '' : this.vod.year} ${this.valueOrEmpty(this.vod.area)}`)
                   .fontSize(15)
                   .fontColor(this.theme().mutedText)
                   .margin({ top: 12 })
@@ -429,13 +434,13 @@ struct Detail {
                   .fontSize(15)
                   .fontColor(this.theme().text)
                   .margin({ top: 8 })
-                Text(`导演：${this.valueOrEmpty(this.vod.director)}`)
+                Text(`${this.labels().directorPrefix}${this.valueOrEmpty(this.vod.director)}`)
                   .fontSize(14)
                   .fontColor(this.theme().text)
                   .margin({ top: 12 })
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
-                Text(`主演：${this.valueOrEmpty(this.vod.actor)}`)
+                Text(`${this.labels().actorPrefix}${this.valueOrEmpty(this.vod.actor)}`)
                   .fontSize(14)
                   .fontColor(this.theme().text)
                   .margin({ top: 6 })
@@ -448,7 +453,7 @@ struct Detail {
             }
             .width('100%')
 
-            Text(this.valueOr(this.vod.des, '暂无简介'))
+            Text(this.valueOr(this.vod.des, this.labels().noDesc))
               .fontSize(15)
               .fontColor(this.theme().text)
               .lineHeight(24)
@@ -460,16 +465,16 @@ struct Detail {
               .onClick(() => this.descExpanded = !this.descExpanded)
 
             Row() {
-              Text('播放列表')
+              Text(this.labels().playList)
                 .fontSize(20)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.theme().text)
                 .layoutWeight(1)
-              Text(`${this.currentSeries().length} 集`)
+              Text(`${this.currentSeries().length}${this.labels().episodeSuffix}`)
                 .fontSize(14)
                 .fontColor(this.theme().mutedText)
                 .margin({ right: 12 })
-              Button(this.reverseSort ? '正序' : '倒序')
+              Button(this.reverseSort ? this.labels().ascending : this.labels().descending)
                 .height(34)
                 .enabled(this.currentSeries().length > 1)
                 .onClick(() => this.reverseSort = !this.reverseSort)
@@ -479,7 +484,7 @@ struct Detail {
             .margin({ top: 24 })
 
             if (this.vod.seriesFlags.length === 0) {
-              Text('暂无播放地址')
+              Text(this.labels().noPlayUrl)
                 .fontSize(16)
                 .fontColor(this.theme().mutedText)
                 .margin({ top: 12 })

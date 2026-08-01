@@ -20,6 +20,9 @@ export class PlaybackSession {
   private speed: number = 1.0;
   private scaleType: media.VideoScaleType = media.VideoScaleType.VIDEO_SCALE_TYPE_FIT;
 
+  /** Last reported playback position; read by DanmuOverlay/SubtitleOverlay timers. */
+  currentPositionMs: number = 0;
+
   onStateChange: (state: string) => void = () => {};
   onTimeUpdate: (positionMs: number) => void = () => {};
   onDurationUpdate: (durationMs: number) => void = () => {};
@@ -98,7 +101,10 @@ export class PlaybackSession {
         player.play().catch((error: Error) => this.onError(errorMessage(error)));
       }
     });
-    player.on('timeUpdate', (time: number) => this.onTimeUpdate(time));
+    player.on('timeUpdate', (time: number) => {
+      this.currentPositionMs = time;
+      this.onTimeUpdate(time);
+    });
     player.on('durationUpdate', (duration: number) => this.onDurationUpdate(duration));
     player.on('endOfStream', () => this.onEndOfStream());
     player.on('error', (error: Error) => {

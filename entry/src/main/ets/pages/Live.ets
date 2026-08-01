@@ -9,7 +9,7 @@ import { liveHeaderService, LiveHeaderMatch } from '../services/LiveHeaderServic
 import { PlayerSurface } from '../components/player/PlayerSurface';
 import { MediaSourceRequest } from '../domain/playback/PlaybackModels';
 import { PlaybackSession } from '../domain/playback/PlaybackSession';
-import { appearanceService, ThemePalette } from '../services/AppearanceService';
+import { appearanceService, LiveLabels, ThemePalette } from '../services/AppearanceService';
 import { settingsStore } from '../services/SettingsStore';
 import { errorMessage } from '../utils/ErrorUtil';
 
@@ -36,7 +36,7 @@ struct Live {
   @State selectedChannelIndex: number = 0;
   @State selectedSourceIndex: number = 0;
   @State playUrl: string = '';
-  @State statusText: string = '正在初始化直播';
+  @State statusText: string = '';
   @State errorText: string = '';
   @State groupName: string = '';
   @State channelName: string = '';
@@ -48,7 +48,7 @@ struct Live {
   @State epgDateOffset: number = 0;
   @State epgDateText: string = '';
   @State epgPrograms: EpgProgram[] = [];
-  @State epgStatus: string = 'EPG 未加载';
+  @State epgStatus: string = '';
   @State epgLoading: boolean = false;
   @State unlockedGroupNames: string[] = [];
   @State showPasswordPanel: boolean = false;
@@ -85,8 +85,8 @@ struct Live {
       }
     };
     this.session.onError = (message: string) => {
-      this.errorText = `直播播放失败，请切换频道或线路：${message}`;
-      this.statusText = '播放失败';
+      this.errorText = `${this.labels().failedPrefix}${message}`;
+      this.statusText = this.labels().playFailed;
       this.isPlaying = false;
     };
   }
@@ -101,6 +101,8 @@ struct Live {
     await settingsStore.init(getContext(this));
     await appearanceService.init();
     this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
+    this.statusText = this.labels().initializing;
+    this.epgStatus = this.labels().epgNotLoaded;
     await epgAliasService.init(getContext(this).resourceManager);
     this.liveChannelReverse = await settingsStore.get<boolean>(HawkConfig.LIVE_CHANNEL_REVERSE, false);
     this.liveCrossGroup = await settingsStore.get<boolean>(HawkConfig.LIVE_CROSS_GROUP, false);
@@ -139,20 +141,21 @@ struct Live {
       try {
         await apiConfigService.loadConfigFromSettings(true);
       } catch (error) {
-        this.errorText = `配置加载失败：${errorMessage(error)}`;
+        this.errorText = `${this.labels().configLoadFailedPrefix}${errorMessage(error)}`;
       }
     }
   }
 
   async loadSubscription(url: string): Promise<void> {
+    const l = this.labels();
     this.loading = true;
-    this.statusText = '正在加载直播订阅';
+    this.statusText = this.labels().loadingSubscription;
     try {
       this.groups = await apiConfigService.loadLiveSubscription(url);
-      this.statusText = `已加载 ${this.groups.length} 个直播分组`;
+      this.statusText = `${this.labels().loadedGroupsPrefix}${this.groups.length}`;
     } catch (error) {
-      this.errorText = `直播订阅加载失败：${errorMessage(error)}`;
-      this.statusText = '直播加载失败';
+      this.errorText = `${this.labels().subscriptionFailedPrefix}${errorMessage(error)}`;
+      this.statusText = this.labels().subscriptionLoadFailed;
     } finally {
       this.loading = false;
     }
@@ -265,7 +268,7 @@ struct Live {
       await this.openGroupIndex(this.pendingGroupIndex);
       return;
     }
-    this.groupPasswordError = '密码错误';
+    this.groupPasswordError = this.labels().passwordError;
   }
 
   cancelGroupPassword(): void {
@@ -296,14 +299,14 @@ struct Live {
 
   async openSelectedChannel(saveSelection: boolean): Promise<void> {
     if (this.groups.length === 0) {
-      this.statusText = this.errorText.length > 0 ? '直播不可用' : '未找到直播频道';
+      this.statusText = this.errorText.length > 0 ? this.labels().liveUnavailable : this.labels().noChannels;
       this.playUrl = '';
       return;
     }
     const group = this.groups[this.selectedGroupIndex];
     const channel = this.getCurrentChannel();
     if (channel === undefined || channel.sourceUrls.length === 0) {
-      this.statusText = '当前分组没有可播放频道';
+      this.statusText = this.labels().noPlayableChannel;
       this.playUrl = '';
       return;
     }
@@ -332,23 +335,24 @@ struct Live {
   }
 
   async loadCurrentEpg(dateOffset: number = this.epgDateOffset): Promise<void> {
+    const l = this.labels();
     const channel = this.getCurrentChannel();
     if (channel === undefined) {
       this.epgPrograms = [];
-      this.epgStatus = 'EPG 无可用频道';
+      this.epgStatus = this.labels().epgNoChannel;
       return;
     }
     this.epgDateOffset = dateOffset;
     this.epgLoading = true;
-    this.epgStatus = '正在加载 EPG';
+    this.epgStatus = this.labels().epgLoading;
     try {
       const result = await epgService.loadPrograms(this.epgUrl, this.epgChannelName(channel), dateOffset);
       this.epgDateText = result.dateText;
       this.epgPrograms = result.programs;
-      this.epgStatus = result.programs.length > 0 ? `EPG ${result.dateText}，${result.programs.length} 条` : `EPG ${result.dateText} 暂无节目`;
+      this.epgStatus = result.programs.length > 0 ? `${this.labels().epgLoadedPrefix}${result.dateText}${this.labels().epgLoadedMiddle}${result.programs.length}` : `${this.labels().epgLoadedPrefix}${result.dateText}${this.labels().epgEmpty}`;
     } catch (error) {
       this.epgPrograms = [];
-      this.epgStatus = `EPG 加载失败：${errorMessage(error)}`;
+      this.epgStatus = `${this.labels().epgLoadFailedPrefix}${errorMessage(error)}`;
     } finally {
       this.epgLoading = false;
     }
@@ -375,8 +379,8 @@ struct Live {
     this.liveHeaders = match.headers;
     const keys = Object.keys(match.headers);
     this.liveHeaderNotice = match.matched
-      ? `已匹配直播头：${keys.join('、')}`
-      : `默认直播 UA：${match.headers['User-Agent']}`;
+      ? `${this.labels().headerMatchedPrefix}${keys.join(', ')}`
+      : `${this.labels().headerDefaultPrefix}${match.headers['User-Agent']}`;
   }
 
   async startLivePlayback(url: string): Promise<void> {
@@ -389,20 +393,21 @@ struct Live {
   }
 
   async playEpgProgram(program: EpgProgram): Promise<void> {
+    const l = this.labels();
     const channel = this.getCurrentChannel();
     if (channel === undefined || channel.sourceUrls.length === 0) {
       return;
     }
     if (!channel.includeBack) {
-      this.statusText = '当前频道不支持回看';
+      this.statusText = this.labels().noTimeShift;
       return;
     }
     if (program.isFuture) {
-      this.statusText = '未来节目不能回看';
+      this.statusText = this.labels().futureProgram;
       return;
     }
     if (program.playSeekStart.length === 0 || program.playSeekEnd.length === 0) {
-      this.statusText = 'EPG 时间格式不支持回看';
+      this.statusText = this.labels().epgFormatUnsupported;
       return;
     }
     const sourceUrl = channel.sourceUrls[this.selectedSourceIndex];
@@ -410,12 +415,12 @@ struct Live {
       this.timeShiftProgramIndex = -1;
       this.timeShiftDateText = '';
       this.timeShiftLabel = '';
-      this.statusText = `已切回直播：${program.title}`;
+      this.statusText = `${this.labels().backToLivePrefix}${program.title}`;
       await this.startLivePlayback(sourceUrl);
     } else {
       this.timeShiftProgramIndex = program.index;
       this.timeShiftDateText = this.epgDateText;
-      this.timeShiftLabel = `回看：${program.title}`;
+      this.timeShiftLabel = `${this.labels().timeShiftPrefix}${program.title}`;
       this.statusText = this.currentPlayStatus();
       await this.startLivePlayback(`${sourceUrl}?playseek=${program.playSeekStart}-${program.playSeekEnd}`);
     }
@@ -484,10 +489,11 @@ struct Live {
   }
 
   async jumpToChannelNumber(clearWhenMissing: boolean = false): Promise<void> {
+    const l = this.labels();
     this.clearChannelNumberTimer();
     const num = Number(this.channelNumberInput.trim());
     if (Number.isNaN(num) || num <= 0) {
-      this.statusText = '请输入有效频道号';
+      this.statusText = this.labels().invalidChannelNumber;
       if (clearWhenMissing) {
         this.channelNumberInput = '';
       }
@@ -509,7 +515,7 @@ struct Live {
         }
       }
     }
-    this.statusText = `未找到频道号：${this.channelNumberInput.trim()}`;
+    this.statusText = `${this.labels().channelNotFoundPrefix}${this.channelNumberInput.trim()}`;
     if (clearWhenMissing) {
       this.channelNumberInput = '';
     }
@@ -531,7 +537,7 @@ struct Live {
 
   appendRemoteDigit(digit: number): void {
     this.channelNumberInput = `${this.channelNumberInput}${digit}`;
-    this.statusText = `输入频道号：${this.channelNumberInput}`;
+    this.statusText = `${this.labels().inputChannelNumberPrefix}${this.channelNumberInput}`;
     this.scheduleChannelNumberJump();
   }
 
@@ -605,7 +611,7 @@ struct Live {
     if (this.isPlaying) {
       this.session.pause();
       this.isPlaying = false;
-      this.statusText = '直播已暂停';
+      this.statusText = this.labels().paused;
     } else {
       this.session.play();
       this.isPlaying = true;
@@ -622,7 +628,7 @@ struct Live {
     if (index >= 0 && index < channel.sourceNames.length && channel.sourceNames[index].length > 0) {
       return channel.sourceNames[index];
     }
-    return `源${index + 1}`;
+    return `${this.labels().sourceFallbackPrefix}${index + 1}`;
   }
 
   getCurrentSourceUrls(): string[] {
@@ -632,7 +638,7 @@ struct Live {
 
   getCurrentSourceLabel(index: number): string {
     const channel = this.getCurrentChannel();
-    return channel === undefined ? `源${index + 1}` : this.getSourceLabel(channel, index);
+    return channel === undefined ? `${this.labels().sourceFallbackPrefix}${index + 1}` : this.getSourceLabel(channel, index);
   }
 
   canSwitchChannel(): boolean {
@@ -662,19 +668,20 @@ struct Live {
   }
 
   epgProgramBadge(program: EpgProgram): string {
+    const l = this.labels();
     if (this.timeShiftProgramIndex === program.index && this.timeShiftDateText === this.epgDateText) {
-      return '回看中';
+      return this.labels().badgePlaying;
     }
     if (program.isCurrent) {
-      return '当前';
+      return this.labels().badgeCurrent;
     }
     if (program.isFuture) {
-      return '未播';
+      return this.labels().badgeUpcoming;
     }
     return this.currentChannelSupportsBack() &&
       program.playSeekStart.length > 0 &&
       program.playSeekEnd.length > 0
-      ? '回看'
+      ? this.labels().badgeTimeShift
       : '';
   }
 
@@ -689,6 +696,15 @@ struct Live {
     return appearanceService.themeByIndex(this.themeSelect);
   }
 
+  labels(): LiveLabels {
+    return appearanceService.liveLabels();
+  }
+
+  /** EPG load-failed status check localized by prefix match. */
+  epgStatusIsError(): boolean {
+    return this.epgStatus.startsWith(this.labels().epgLoadFailedPrefix);
+  }
+
 
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
@@ -701,11 +717,11 @@ struct Live {
 
       if (this.playUrl.length === 0) {
         Column() {
-          Text(this.loading ? '正在加载直播频道' : '无直播播放地址')
+          Text(this.loading ? this.labels().loadingChannels : this.labels().noLiveUrl)
             .fontSize(30)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.theme().text)
-          Text(this.errorText.length > 0 ? this.errorText : '请确认配置中的 lives 或设置中的 LIVE_URL')
+          Text(this.errorText.length > 0 ? this.errorText : this.labels().liveUrlHint)
             .fontSize(16)
             .fontColor(this.errorText.length > 0 ? '#fca5a5' : this.theme().text)
             .margin({ top: 12 })
@@ -719,7 +735,7 @@ struct Live {
       Row() {
         Column() {
           Row() {
-            Text('< 返回')
+            Text(this.labels().back)
               .fontSize(18)
               .fontColor(this.theme().text)
               .onClick(() => router.back())
@@ -731,7 +747,7 @@ struct Live {
                 .margin({ left: 18 })
             }
             Column() {
-              Text(this.channelName.length > 0 ? this.channelName : '直播')
+              Text(this.channelName.length > 0 ? this.channelName : this.labels().defaultTitle)
                 .fontSize(24)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.theme().text)
@@ -767,25 +783,25 @@ struct Live {
           }
 
           Row() {
-            Button(this.isPlaying ? '暂停' : '播放')
+            Button(this.isPlaying ? this.labels().pause : this.labels().play)
               .height(40)
               .enabled(this.playUrl.length > 0)
               .onClick(() => this.togglePlay())
-            Button('上一台')
+            Button(this.labels().prevChannel)
               .height(40)
               .margin({ left: 10 })
               .enabled(this.canSwitchChannel())
               .onClick(() => {
                 this.switchChannel(this.liveChannelReverse ? 1 : -1);
               })
-            Button('下一台')
+            Button(this.labels().nextChannel)
               .height(40)
               .margin({ left: 10 })
               .enabled(this.canSwitchChannel())
               .onClick(() => {
                 this.switchChannel(this.liveChannelReverse ? -1 : 1);
               })
-            Button('换源')
+            Button(this.labels().switchSource)
               .height(40)
               .margin({ left: 10 })
               .enabled(this.getCurrentSourceUrls().length > 1)
@@ -796,11 +812,11 @@ struct Live {
           .margin({ top: 16 })
 
           Row() {
-            Button(`反向换台：${this.liveChannelReverse ? '开' : '关'}`)
+            Button(`${this.labels().reverseTogglePrefix}${this.liveChannelReverse ? this.labels().toggleOn : this.labels().toggleOff}`)
               .height(34)
               .backgroundColor(this.liveChannelReverse ? this.theme().primary : this.theme().cardActiveBg)
               .onClick(() => this.toggleLiveChannelReverse())
-            Button(`跨组换台：${this.liveCrossGroup ? '开' : '关'}`)
+            Button(`${this.labels().crossGroupTogglePrefix}${this.liveCrossGroup ? this.labels().toggleOn : this.labels().toggleOff}`)
               .height(34)
               .margin({ left: 10 })
               .backgroundColor(this.liveCrossGroup ? this.theme().primary : this.theme().cardActiveBg)
@@ -809,12 +825,12 @@ struct Live {
           .margin({ top: 10 })
 
           Row() {
-            TextInput({ text: this.channelNumberInput, placeholder: '频道号' })
+            TextInput({ text: this.channelNumberInput, placeholder: this.labels().channelNumberPlaceholder })
               .height(34)
               .fontSize(13)
               .width(120)
               .onChange((value: string) => this.channelNumberInput = value)
-            Button('跳转频道')
+            Button(this.labels().jumpChannel)
               .height(34)
               .margin({ left: 10 })
               .enabled(this.channelNumberInput.trim().length > 0)
@@ -823,7 +839,7 @@ struct Live {
           .margin({ top: 10 })
 
           if (this.epgUrl.length > 0) {
-            Text(`EPG：${this.epgUrl}`)
+            Text(`${this.labels().epgUrlPrefix}${this.epgUrl}`)
               .fontSize(12)
               .fontColor(this.theme().mutedText)
               .margin({ top: 10 })
@@ -832,7 +848,7 @@ struct Live {
           }
 
           if (this.currentChannelSupportsBack()) {
-            Text(this.timeShiftLabel.length > 0 ? this.timeShiftLabel : '当前频道支持 EPG 回看')
+            Text(this.timeShiftLabel.length > 0 ? this.timeShiftLabel : this.labels().timeShiftSupported)
               .fontSize(12)
               .fontColor('#86efac')
               .margin({ top: 8 })
@@ -853,20 +869,20 @@ struct Live {
             Row() {
               Text(this.epgStatus)
                 .fontSize(14)
-                .fontColor(this.epgStatus.startsWith('EPG 加载失败') ? '#fca5a5' : this.theme().text)
+                .fontColor(this.epgStatusIsError() ? '#fca5a5' : this.theme().text)
                 .layoutWeight(1)
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
-              Button('前一天')
+              Button(this.labels().prevDay)
                 .height(34)
                 .enabled(!this.epgLoading)
                 .onClick(() => this.loadCurrentEpg(this.epgDateOffset - 1))
-              Button('今天')
+              Button(this.labels().today)
                 .height(34)
                 .margin({ left: 8 })
                 .enabled(!this.epgLoading)
                 .onClick(() => this.loadCurrentEpg(0))
-              Button('后一天')
+              Button(this.labels().nextDay)
                 .height(34)
                 .margin({ left: 8 })
                 .enabled(!this.epgLoading)
@@ -918,7 +934,7 @@ struct Live {
         .padding({ left: 44, right: 24, top: 28, bottom: 28 })
 
         Column() {
-          Text('分组')
+          Text(this.labels().groups)
             .fontSize(16)
             .fontColor(this.theme().text)
             .margin({ bottom: 10 })
@@ -945,7 +961,7 @@ struct Live {
         .padding({ top: 28, bottom: 28 })
 
         Column() {
-          Text('频道')
+          Text(this.labels().channels)
             .fontSize(16)
             .fontColor(this.theme().text)
             .margin({ bottom: 10 })
@@ -963,7 +979,7 @@ struct Live {
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                     .layoutWeight(1)
-                  Text(`${channel.sourceUrls.length}源`)
+                  Text(`${channel.sourceUrls.length}${this.labels().sourceCountSuffix}`)
                     .fontSize(12)
                     .fontColor(this.theme().mutedText)
                     .margin({ left: 8 })
@@ -1012,7 +1028,7 @@ struct Live {
 
       if (this.showPasswordPanel) {
         Column() {
-          Text('请输入分组密码')
+          Text(this.labels().passwordTitle)
             .fontSize(20)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.theme().text)
@@ -1022,7 +1038,7 @@ struct Live {
             .fontSize(14)
             .fontColor(this.theme().mutedText)
             .margin({ top: 8 })
-          TextInput({ text: this.groupPasswordInput, placeholder: '分组密码' })
+          TextInput({ text: this.groupPasswordInput, placeholder: this.labels().passwordPlaceholder })
             .height(42)
             .fontSize(15)
             .margin({ top: 16 })
@@ -1037,12 +1053,12 @@ struct Live {
               .margin({ top: 8 })
           }
           Row() {
-            Button('取消')
+            Button(this.labels().cancel)
               .height(38)
               .layoutWeight(1)
               .backgroundColor(this.theme().cardActiveBg)
               .onClick(() => this.cancelGroupPassword())
-            Button('确认')
+            Button(this.labels().confirm)
               .height(38)
               .layoutWeight(1)
               .margin({ left: 10 })

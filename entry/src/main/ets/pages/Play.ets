@@ -2,14 +2,18 @@ import router from '@ohos.router';
 import { KeyCode } from '@ohos.multimodalInput.keyCode';
 import { HawkConfig } from '../constants/HawkConfig';
 import { PlayerSurface } from '../components/player/PlayerSurface';
+import { DanmuOverlay } from '../components/player/DanmuOverlay';
+import { SubtitleOverlay } from '../components/player/SubtitleOverlay';
 import { MediaSourceRequest, MediaTrack, ScaleNames, SpeedValues } from '../domain/playback/PlaybackModels';
 import { PlaybackSession } from '../domain/playback/PlaybackSession';
 import { PlayerConfig } from '../domain/playback/PlayerConfig';
 import { nextEpisodeIndex, previousEpisodeIndex } from '../domain/playback/PlaybackOrder';
 import { ParseBean, VodInfo, VodSeries } from '../models/TvBoxModels';
 import { apiConfigService } from '../services/ApiConfigService';
-import { appearanceService, ThemePalette } from '../services/AppearanceService';
+import { appearanceService, PlayLabels, ThemePalette } from '../services/AppearanceService';
 import { PlaybackResolveResult, playbackService } from '../services/PlaybackService';
+import { DanmuConfig, DanmuItem, danmuService } from '../services/DanmuService';
+import { SubtitleCue, subtitleService } from '../services/SubtitleService';
 import { settingsStore } from '../services/SettingsStore';
 import { vodDataStore } from '../services/VodDataStore';
 import { asArray, asRecord, JsonNode, parseJson, safeString } from '../utils/JsonUtil';
@@ -30,12 +34,12 @@ struct Play {
   @State playIndex: number = 0;
   @State rawUrl: string = '';
   @State playUrl: string = '';
-  @State title: string = '播放';
+  @State title: string = '';
   @State episodeName: string = '';
   @State currentTimeMs: number = 0;
   @State durationMs: number = 0;
   @State isPlaying: boolean = true;
-  @State statusText: string = '准备播放';
+  @State statusText: string = '';
   @State errorText: string = '';
   @State parseStatus: string = '';
   @State parseWarning: string = '';
@@ -57,6 +61,16 @@ struct Play {
   @State selectedAudioTrack: number = -1;
   @State selectedSubtitleTrack: number = -1;
   @State themeSelect: number = 0;
+  @State screenDisplay: boolean = true;
+
+  @State danmuItems: DanmuItem[] = [];
+  @State danmuConfig: DanmuConfig = { open: true, maxLine: 3, speed: 1.5, alpha: 0.9, sizeScale: 0.8, randomColor: false };
+  @State danmuVisible: boolean = false;
+  @State subtitleCues: SubtitleCue[] = [];
+  @State subtitleVisible: boolean = true;
+  @State subtitleFontSize: number = 24;
+  @State subtitleDelayMs: number = 0;
+  @State subtitleStyleIndex: number = 0;
 
   aboutToAppear(): void {
     this.bindSession();
@@ -78,23 +92,25 @@ struct Play {
       this.durationMs = durationMs;
     };
     this.session.onStateChange = (state: string) => {
+      const l = this.labels();
       if (state === 'playing') {
         this.isPlaying = true;
-        this.statusText = '正在播放';
+        this.statusText = this.labels().playing;
         this.errorText = '';
       } else if (state === 'paused') {
         this.isPlaying = false;
-        this.statusText = '已暂停';
+        this.statusText = this.labels().paused;
       }
     };
     this.session.onEndOfStream = () => {
       this.isPlaying = false;
-      this.statusText = '播放结束';
+      this.statusText = this.labels().ended;
       this.playNextEpisode();
     };
     this.session.onError = (message: string) => {
-      this.errorText = `播放失败：${message}`;
-      this.statusText = '播放失败';
+      const l = this.labels();
+      this.errorText = `${this.labels().failedPrefix}${message}`;
+      this.statusText = this.labels().failed;
       this.isPlaying = false;
     };
     this.session.onTracksReady = (audio: MediaTrack[], subtitle: MediaTrack[]) => {
@@ -107,6 +123,11 @@ struct Play {
     await settingsStore.init(getContext(this));
     await appearanceService.init();
     this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
+    this.screenDisplay = await settingsStore.get<boolean>(HawkConfig.SCREEN_DISPLAY, true);
+    this.title = this.labels().defaultTitle;
+    this.statusText = this.labels().preparing;
+    await this.loadDanmuConfig();
+    await this.loadSubtitleConfig();
     await this.ensureConfigLoaded();
     const rawParams = router.getParams();
     const params = rawParams === undefined ? {} as Record<string, string> : rawParams as Record<string, string>;
@@ -165,8 +186,8 @@ struct Play {
       this.rawUrl = this.recordVod.last;
     }
     if (this.rawUrl.length === 0) {
-      this.statusText = '缺少播放地址';
-      this.errorText = '无法播放：playUrl 为空';
+      this.statusText = this.labels().missingUrl;
+      this.errorText = this.labels().cannotPlayEmpty;
       this.isPlaying = false;
     } else {
       await this.resolveCurrentUrl();
@@ -225,7 +246,7 @@ struct Play {
         const url = safeString(row, 'url');
         if (url.length > 0) {
           result.push({
-            name: safeString(row, 'name', `第${result.length + 1}集`),
+            name: safeString(row, 'name', `${this.labels().episodeFallbackPrefix}${result.length + 1}${this.labels().episodeFallbackSuffix}`),
             url
           });
         }
@@ -239,7 +260,7 @@ struct Play {
   createMinimalVod(): VodInfo {
     return {
       id: this.vodId.length > 0 ? this.vodId : this.rawUrl,
-      name: this.vodId.length > 0 ? this.vodId : '外部播放',
+      name: this.vodId.length > 0 ? this.vodId : this.labels().externalTitle,
       seriesFlags: [],
       seriesMap: {},
       playIndex: this.playIndex,
@@ -316,6 +337,10 @@ struct Play {
     this.skipEndArmed = true;
     this.audioTracks = [];
     this.subtitleTracks = [];
+    this.danmuItems = [];
+    this.subtitleCues = [];
+    this.danmuVisible = false;
+    this.subtitleVisible = false;
     await this.resolveCurrentUrl();
   }
 
@@ -373,10 +398,11 @@ struct Play {
   }
 
   async resolveCurrentUrl(): Promise<void> {
+    const l = this.labels();
     if (this.rawUrl.length === 0) {
       this.playUrl = '';
-      this.statusText = '缺少播放地址';
-      this.errorText = '无法播放：playUrl 为空';
+      this.statusText = this.labels().missingUrl;
+      this.errorText = this.labels().cannotPlayEmpty;
       this.isPlaying = false;
       return;
     }
@@ -387,7 +413,7 @@ struct Play {
     this.errorText = '';
     this.parseWarning = '';
     this.parseStatus = '';
-    this.statusText = '解析中';
+    this.statusText = this.labels().resolving;
     try {
       const parseName = this.parseManuallySelected ? this.selectedParseName : '';
       const result = await playbackService.resolve(this.sourceKey, this.playFlag, this.rawUrl, parseName);
@@ -399,10 +425,10 @@ struct Play {
       if (seq !== this.resolveSeq) {
         return;
       }
-      this.parseWarning = '解析失败，暂用原始地址';
+      this.parseWarning = this.labels().resolveFailedFallback;
       this.parseStatus = errorMessage(error as Error);
       this.errorText = this.parseStatus;
-      this.statusText = '解析失败';
+      this.statusText = this.labels().resolveFailed;
       await this.startPlayback(this.rawUrl, {});
     } finally {
       if (seq === this.resolveSeq) {
@@ -417,6 +443,30 @@ struct Play {
     this.statusText = result.status;
     this.errorText = '';
     await this.startPlayback(result.url, result.headers === undefined ? {} : result.headers);
+    await this.loadDanmuAndSubtitle(result);
+  }
+
+  async loadDanmuAndSubtitle(result: PlaybackResolveResult): Promise<void> {
+    this.danmuItems = [];
+    this.subtitleCues = [];
+    this.danmuVisible = false;
+    this.subtitleVisible = false;
+    const danmuSource = result.danmu === undefined ? '' : result.danmu;
+    if (danmuSource.length > 0 && this.danmuConfig.open) {
+      try {
+        this.danmuItems = await danmuService.load(danmuSource);
+        this.danmuVisible = this.danmuItems.length > 0;
+      } catch (_error) {
+      }
+    }
+    const subtSource = result.subt === undefined ? '' : result.subt;
+    if (subtSource.length > 0) {
+      try {
+        this.subtitleCues = await subtitleService.load(subtSource);
+        this.subtitleVisible = this.subtitleCues.length > 0;
+      } catch (_error) {
+      }
+    }
   }
 
   /** Merges parse-returned headers with the `playerCfg` snapshot; parse results win. */
@@ -505,6 +555,54 @@ struct Play {
     return appearanceService.themeByIndex(this.themeSelect);
   }
 
+  labels(): PlayLabels {
+    return appearanceService.playLabels();
+  }
+
+  async loadDanmuConfig(): Promise<void> {
+    this.danmuConfig = {
+      open: await settingsStore.get<boolean>(HawkConfig.DANMU_OPEN, true),
+      maxLine: await settingsStore.get<number>(HawkConfig.DANMU_MAXLINE, 3),
+      speed: await settingsStore.get<number>(HawkConfig.DANMU_SPEED, 1.5),
+      alpha: await settingsStore.get<number>(HawkConfig.DANMU_ALPHA, 0.9),
+      sizeScale: await settingsStore.get<number>(HawkConfig.DANMU_SIZESCALE, 0.8),
+      randomColor: await settingsStore.get<boolean>(HawkConfig.DANMU_COLOR, false)
+    };
+  }
+
+  async loadSubtitleConfig(): Promise<void> {
+    this.subtitleFontSize = await settingsStore.get<number>(HawkConfig.SUBTITLE_TEXT_SIZE, 24);
+    this.subtitleDelayMs = await settingsStore.get<number>(HawkConfig.SUBTITLE_TIME_DELAY, 0) * 1000;
+    this.subtitleStyleIndex = await settingsStore.get<number>(HawkConfig.SUBTITLE_TEXT_STYLE, 0);
+  }
+
+  toggleDanmu(): void {
+    this.danmuVisible = !this.danmuVisible;
+  }
+
+  toggleScreenDisplay(): void {
+    this.screenDisplay = !this.screenDisplay;
+    settingsStore.put(HawkConfig.SCREEN_DISPLAY, this.screenDisplay);
+  }
+
+  toggleSubtitle(): void {
+    this.subtitleVisible = !this.subtitleVisible;
+  }
+
+  async toggleDanmuOpen(): Promise<void> {
+    const c = this.danmuConfig;
+    this.danmuConfig = {
+      open: !c.open,
+      maxLine: c.maxLine,
+      speed: c.speed,
+      alpha: c.alpha,
+      sizeScale: c.sizeScale,
+      randomColor: c.randomColor
+    };
+    await settingsStore.put(HawkConfig.DANMU_OPEN, this.danmuConfig.open);
+    this.danmuVisible = this.danmuConfig.open && this.danmuItems.length > 0;
+  }
+
   /** Android `VodController` D-pad mapping: left/right seek, up/down episode, OK play/pause. */
   handleKey(event: KeyEvent): void {
     if (event.type !== KeyType.Down) {
@@ -561,25 +659,25 @@ struct Play {
       } else if (this.panel === 'skip') {
         Column() {
           Row() {
-            Text(`跳过片头 ${this.skipStartSeconds}s`).fontSize(14).fontColor(this.theme().text).layoutWeight(1)
-            Button('-30').height(34).onClick(() => this.setSkipStart(this.skipStartSeconds - 30))
-            Button('+30').height(34).margin({ left: 8 }).onClick(() => this.setSkipStart(this.skipStartSeconds + 30))
-            Button('设为当前').height(34).margin({ left: 8 })
+            Text(`${this.labels().skipStartPrefix}${this.skipStartSeconds}s`).fontSize(14).fontColor(this.theme().text).layoutWeight(1)
+            Button(this.labels().minusSeconds).height(34).onClick(() => this.setSkipStart(this.skipStartSeconds - 30))
+            Button(this.labels().plusSeconds).height(34).margin({ left: 8 }).onClick(() => this.setSkipStart(this.skipStartSeconds + 30))
+            Button(this.labels().setToCurrent).height(34).margin({ left: 8 })
               .onClick(() => this.setSkipStart(Math.floor(this.currentTimeMs / 1000)))
           }.width('100%').alignItems(VerticalAlign.Center)
           Row() {
-            Text(`跳过片尾 ${this.skipEndSeconds}s`).fontSize(14).fontColor(this.theme().text).layoutWeight(1)
-            Button('-30').height(34).onClick(() => this.setSkipEnd(this.skipEndSeconds - 30))
-            Button('+30').height(34).margin({ left: 8 }).onClick(() => this.setSkipEnd(this.skipEndSeconds + 30))
-            Button('设为剩余').height(34).margin({ left: 8 })
+            Text(`${this.labels().skipEndPrefix}${this.skipEndSeconds}s`).fontSize(14).fontColor(this.theme().text).layoutWeight(1)
+            Button(this.labels().minusSeconds).height(34).onClick(() => this.setSkipEnd(this.skipEndSeconds - 30))
+            Button(this.labels().plusSeconds).height(34).margin({ left: 8 }).onClick(() => this.setSkipEnd(this.skipEndSeconds + 30))
+            Button(this.labels().setToRemaining).height(34).margin({ left: 8 })
               .onClick(() => this.setSkipEnd(Math.floor((this.durationMs - this.currentTimeMs) / 1000)))
           }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 10 })
         }.width('100%')
       } else if (this.panel === 'track') {
         Column() {
-          Text('音轨').fontSize(14).fontColor(this.theme().mutedText).width('100%')
+          Text(this.labels().audioTrack).fontSize(14).fontColor(this.theme().mutedText).width('100%')
           if (this.audioTracks.length === 0) {
-            Text('无可选音轨').fontSize(13).fontColor(this.theme().subtleText).width('100%').margin({ top: 6 })
+            Text(this.labels().noAudioTrack).fontSize(13).fontColor(this.theme().subtleText).width('100%').margin({ top: 6 })
           } else {
             Flex({ wrap: FlexWrap.Wrap }) {
               ForEach(this.audioTracks, (track: MediaTrack) => {
@@ -587,9 +685,9 @@ struct Play {
               }, (track: MediaTrack) => `audio-${track.index}`)
             }
           }
-          Text('字幕').fontSize(14).fontColor(this.theme().mutedText).width('100%').margin({ top: 12 })
+          Text(this.labels().subtitle).fontSize(14).fontColor(this.theme().mutedText).width('100%').margin({ top: 12 })
           if (this.subtitleTracks.length === 0) {
-            Text('无可选字幕').fontSize(13).fontColor(this.theme().subtleText).width('100%').margin({ top: 6 })
+            Text(this.labels().noSubtitle).fontSize(13).fontColor(this.theme().subtleText).width('100%').margin({ top: 6 })
           } else {
             Flex({ wrap: FlexWrap.Wrap }) {
               ForEach(this.subtitleTracks, (track: MediaTrack) => {
@@ -625,9 +723,25 @@ struct Play {
       .height('100%')
       .backgroundColor(Color.Black)
 
+      DanmuOverlay({
+        session: this.session,
+        items: this.danmuItems,
+        config: this.danmuConfig,
+        visible: this.danmuVisible
+      })
+
+      SubtitleOverlay({
+        session: this.session,
+        cues: this.subtitleCues,
+        visible: this.subtitleVisible,
+        fontSize: this.subtitleFontSize,
+        delayMs: this.subtitleDelayMs,
+        styleIndex: this.subtitleStyleIndex
+      })
+
       if (this.playUrl.length === 0) {
         Column() {
-          Text(this.resolving ? '正在解析播放地址' : '无播放地址')
+          Text(this.resolving ? this.labels().resolvingUrl : this.labels().noUrl)
             .fontSize(30)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.theme().text)
@@ -646,46 +760,48 @@ struct Play {
 
       if (this.controlsVisible) {
         Column() {
-          Row() {
-            Text('< 返回')
-              .fontSize(18)
-              .fontColor(this.theme().text)
-              .focusable(true)
-              .onClick(() => router.back())
-            Column() {
-              Text(this.title)
-                .fontSize(22)
-                .fontWeight(FontWeight.Bold)
+          if (this.screenDisplay) {
+            Row() {
+              Text(this.labels().back)
+                .fontSize(18)
                 .fontColor(this.theme().text)
-                .maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-              Text(`${this.playFlag} ${this.episodeName}`)
+                .focusable(true)
+                .onClick(() => router.back())
+              Column() {
+                Text(this.title)
+                  .fontSize(22)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor(this.theme().text)
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                Text(`${this.playFlag} ${this.episodeName}`)
+                  .fontSize(14)
+                  .fontColor(this.theme().text)
+                  .margin({ top: 4 })
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+              }
+              .alignItems(HorizontalAlign.Start)
+              .layoutWeight(1)
+              .margin({ left: 24 })
+              Text(this.statusText)
                 .fontSize(14)
-                .fontColor(this.theme().text)
-                .margin({ top: 4 })
+                .fontColor(this.errorText.length > 0 ? '#fca5a5' : this.theme().primarySoft)
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
             }
-            .alignItems(HorizontalAlign.Start)
-            .layoutWeight(1)
-            .margin({ left: 24 })
-            Text(this.statusText)
-              .fontSize(14)
-              .fontColor(this.errorText.length > 0 ? '#fca5a5' : this.theme().primarySoft)
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
 
-          if (this.parseStatus.length > 0 || this.parseWarning.length > 0) {
-            Text(this.parseWarning.length > 0 ? `${this.parseStatus}（${this.parseWarning}）` : this.parseStatus)
-              .fontSize(13)
-              .fontColor(this.parseWarning.length > 0 ? '#fbbf24' : this.theme().text)
-              .margin({ top: 10 })
-              .width('100%')
-              .maxLines(2)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
+            if (this.parseStatus.length > 0 || this.parseWarning.length > 0) {
+              Text(this.parseWarning.length > 0 ? `${this.parseStatus}（${this.parseWarning}）` : this.parseStatus)
+                .fontSize(13)
+                .fontColor(this.parseWarning.length > 0 ? '#fbbf24' : this.theme().text)
+                .margin({ top: 10 })
+                .width('100%')
+                .maxLines(2)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+            }
           }
 
           if (this.panel.length > 0) {
@@ -722,21 +838,21 @@ struct Play {
           .margin({ top: 14 })
 
           Row() {
-            Button(this.isPlaying ? '暂停' : '播放')
+            Button(this.isPlaying ? this.labels().pause : this.labels().play)
               .height(40)
               .enabled(this.playUrl.length > 0 && !this.resolving)
               .onClick(() => this.togglePlay())
-            Button('上一集')
+            Button(this.labels().prevEpisode)
               .height(40)
               .margin({ left: 10 })
               .enabled(this.playIndex > 0 && this.episodes.length > 0 && !this.resolving)
               .onClick(() => this.playPreviousEpisode())
-            Button('下一集')
+            Button(this.labels().nextEpisode)
               .height(40)
               .margin({ left: 10 })
               .enabled(this.playIndex + 1 < this.episodes.length && !this.resolving)
               .onClick(() => this.playNextEpisode())
-            Button(`选集 ${this.episodes.length}`)
+            Button(`${this.labels().selectEpisodePrefix}${this.episodes.length}`)
               .height(40)
               .margin({ left: 10 })
               .enabled(this.episodes.length > 0)
@@ -749,19 +865,38 @@ struct Play {
               .height(40)
               .margin({ left: 10 })
               .onClick(() => this.togglePanel('scale'))
-            Button('音轨字幕')
+            Button(this.labels().trackSubtitle)
               .height(40)
               .margin({ left: 10 })
               .onClick(() => this.togglePanel('track'))
-            Button('跳过片头尾')
+            Button(this.labels().skipIntroOutro)
               .height(40)
               .margin({ left: 10 })
               .onClick(() => this.togglePanel('skip'))
-            Button('解析')
+            if (this.danmuItems.length > 0) {
+              Button(this.danmuVisible ? this.labels().danmuOn : this.labels().danmuOff)
+                .height(40)
+                .margin({ left: 10 })
+                .backgroundColor(this.danmuVisible ? this.theme().primary : this.theme().cardActiveBg)
+                .onClick(() => this.toggleDanmu())
+            }
+            if (this.subtitleCues.length > 0) {
+              Button(this.subtitleVisible ? this.labels().subtitleOn : this.labels().subtitleOff)
+                .height(40)
+                .margin({ left: 10 })
+                .backgroundColor(this.subtitleVisible ? this.theme().primary : this.theme().cardActiveBg)
+                .onClick(() => this.toggleSubtitle())
+            }
+            Button(this.labels().parse)
               .height(40)
               .margin({ left: 10 })
               .enabled(this.parses.length > 0)
               .onClick(() => this.togglePanel('parse'))
+            Button(this.labels().screenDisplay)
+              .height(40)
+              .margin({ left: 10 })
+              .backgroundColor(this.screenDisplay ? this.theme().primary : this.theme().cardActiveBg)
+              .onClick(() => this.toggleScreenDisplay())
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)

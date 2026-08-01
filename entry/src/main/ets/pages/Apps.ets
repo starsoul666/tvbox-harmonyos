@@ -3,7 +3,7 @@ import common from '@ohos.app.ability.common';
 import { AppLaunchItem } from '../models/TvBoxModels';
 import { appDataStore } from '../services/AppDataStore';
 import { AppQueryResult, appLaunchService } from '../services/AppLaunchService';
-import { appearanceService, ThemePalette } from '../services/AppearanceService';
+import { appearanceService, AppsLabels, ThemePalette } from '../services/AppearanceService';
 import { settingsStore } from '../services/SettingsStore';
 import { HawkConfig } from '../constants/HawkConfig';
 
@@ -17,7 +17,7 @@ struct Apps {
   @State bundleName: string = '';
   @State abilityName: string = '';
   @State moduleName: string = '';
-  @State statusText: string = 'HarmonyOS 普通应用无法像 Android 一样直接枚举全部非系统应用，可添加 Bundle/Ability 后启动。';
+  @State statusText: string = '';
   @State themeSelect: number = 0;
 
   aboutToAppear(): void {
@@ -28,6 +28,7 @@ struct Apps {
     await settingsStore.init(getContext(this));
     await appearanceService.init();
     this.themeSelect = await settingsStore.get<number>(HawkConfig.THEME_SELECT, 0);
+    this.statusText = this.labels().initialStatus;
     this.refreshApps();
   }
 
@@ -50,18 +51,18 @@ struct Apps {
     this.bundleName = item.bundleName;
     this.abilityName = item.abilityName;
     this.moduleName = item.moduleName;
-    this.statusText = `正在编辑：${item.name}`;
+    this.statusText = `${this.labels().editingPrefix}${item.name}`;
   }
 
   saveManual(): void {
     const item = appLaunchService.createManualItem(this.appName, this.bundleName, this.abilityName, this.moduleName);
     if (item.bundleName.length === 0) {
-      this.statusText = 'Bundle Name 不能为空';
+      this.statusText = this.labels().bundleEmpty;
       return;
     }
     item.id = this.editingId;
     const saved = appDataStore.save(item);
-    this.statusText = `已保存：${saved.name}`;
+    this.statusText = `${this.labels().savedPrefix}${saved.name}`;
     this.resetForm();
     this.refreshApps();
   }
@@ -81,7 +82,7 @@ struct Apps {
       result.item.moduleName = this.moduleName.trim();
     }
     const saved = appDataStore.save(result.item);
-    this.statusText = `${result.message}，已保存：${saved.name}`;
+    this.statusText = `${result.message}${this.labels().querySavedPrefix}${saved.name}`;
     this.resetForm();
     this.refreshApps();
   }
@@ -109,6 +110,10 @@ struct Apps {
     return appearanceService.themeByIndex(this.themeSelect);
   }
 
+  labels(): AppsLabels {
+    return appearanceService.appsLabels();
+  }
+
   @Builder
   appCard(item: AppLaunchItem) {
     Column() {
@@ -133,21 +138,21 @@ struct Apps {
             .fontColor(this.theme().mutedText)
             .margin({ top: 4 })
             .maxLines(1)
-          Text(item.abilityName.length > 0 ? item.abilityName : '未指定 Ability，启动时由系统解析')
+          Text(item.abilityName.length > 0 ? item.abilityName : this.labels().abilityMissing)
             .fontSize(12)
             .fontColor(this.theme().subtleText)
             .margin({ top: 4 })
             .maxLines(1)
         }.layoutWeight(1).margin({ left: 14 }).alignItems(HorizontalAlign.Start)
         if (this.deleteMode) {
-          Text('移除')
+          Text(this.labels().remove)
             .fontSize(14)
             .fontColor('#fecaca')
             .padding({ left: 10, right: 10, top: 6, bottom: 6 })
             .backgroundColor('#7f1d1d')
             .borderRadius(10)
         } else {
-          Button('编辑')
+          Button(this.labels().edit)
             .height(36)
             .fontSize(14)
             .onClick(() => {
@@ -156,7 +161,7 @@ struct Apps {
         }
       }.width('100%').alignItems(VerticalAlign.Center)
       if (item.systemApp) {
-        Text('系统应用')
+        Text(this.labels().systemApp)
           .fontSize(12)
           .fontColor('#fbbf24')
           .alignSelf(ItemAlign.Start)
@@ -174,18 +179,18 @@ struct Apps {
   build() {
     Column() {
       Row() {
-        Text('< 返回')
+        Text(this.labels().back)
           .fontSize(18)
           .fontColor(this.theme().text)
           .onClick(() => router.back())
         Blank()
-        Button(this.deleteMode ? '退出删除模式' : '删除模式')
+        Button(this.deleteMode ? this.labels().exitDeleteMode : this.labels().deleteMode)
           .height(40)
           .backgroundColor(this.deleteMode ? '#7f1d1d' : '#374151')
           .onClick(() => this.deleteMode = !this.deleteMode)
       }.width('100%').alignItems(VerticalAlign.Center)
 
-      Text('应用')
+      Text(this.labels().title)
         .fontSize(36)
         .fontWeight(FontWeight.Bold)
         .fontColor(this.theme().text)
@@ -200,47 +205,47 @@ struct Apps {
 
       Row() {
         Column() {
-          Text(this.editingId > 0 ? '编辑启动项' : '添加启动项')
+          Text(this.editingId > 0 ? this.labels().editEntry : this.labels().addEntry)
             .fontSize(20)
             .fontColor(this.theme().text)
             .fontWeight(FontWeight.Medium)
             .alignSelf(ItemAlign.Start)
-          TextInput({ text: this.appName, placeholder: '名称，可留空' })
+          TextInput({ text: this.appName, placeholder: this.labels().namePlaceholder })
             .height(48)
             .fontSize(16)
             .margin({ top: 14 })
             .onChange((value: string) => this.appName = value)
-          TextInput({ text: this.bundleName, placeholder: 'Bundle Name，例如 com.example.app' })
+          TextInput({ text: this.bundleName, placeholder: this.labels().bundlePlaceholder })
             .height(48)
             .fontSize(16)
             .margin({ top: 12 })
             .onChange((value: string) => this.bundleName = value)
-          TextInput({ text: this.abilityName, placeholder: 'Ability Name，可先留空再解析' })
+          TextInput({ text: this.abilityName, placeholder: this.labels().abilityPlaceholder })
             .height(48)
             .fontSize(16)
             .margin({ top: 12 })
             .onChange((value: string) => this.abilityName = value)
-          TextInput({ text: this.moduleName, placeholder: 'Module Name，可选' })
+          TextInput({ text: this.moduleName, placeholder: this.labels().modulePlaceholder })
             .height(48)
             .fontSize(16)
             .margin({ top: 12 })
             .onChange((value: string) => this.moduleName = value)
           Row() {
-            Button('解析并保存')
+            Button(this.labels().resolveAndSave)
               .height(42)
               .onClick(() => this.queryAndSave())
-            Button('直接保存')
+            Button(this.labels().saveDirect)
               .height(42)
               .margin({ left: 12 })
               .backgroundColor(this.theme().cardActiveBg)
               .onClick(() => this.saveManual())
-            Button('清空')
+            Button(this.labels().clear)
               .height(42)
               .margin({ left: 12 })
               .backgroundColor(this.theme().panelBg)
               .onClick(() => this.resetForm())
           }.width('100%').margin({ top: 14 })
-          Text('删除模式在 HarmonyOS 版本中移除保存的启动项；系统卸载入口受平台权限限制，无法复刻 Android ACTION_DELETE。')
+          Text(this.labels().deleteNotice)
             .fontSize(13)
             .fontColor(this.theme().mutedText)
             .margin({ top: 14 })
@@ -253,12 +258,12 @@ struct Apps {
 
         Column() {
           Row() {
-            Text(`已保存应用：${this.apps.length}`)
+            Text(`${this.labels().savedCountPrefix}${this.apps.length}`)
               .fontSize(20)
               .fontColor(this.theme().text)
               .fontWeight(FontWeight.Medium)
             Blank()
-            Button('刷新')
+            Button(this.labels().refresh)
               .height(36)
               .backgroundColor(this.theme().cardActiveBg)
               .onClick(() => this.refreshApps())
@@ -266,10 +271,10 @@ struct Apps {
 
           if (this.apps.length === 0) {
             Column() {
-              Text('暂无应用启动项')
+              Text(this.labels().empty)
                 .fontSize(18)
                 .fontColor(this.theme().mutedText)
-              Text('先在左侧输入 Bundle Name 和 Ability Name。')
+              Text(this.labels().emptyHint)
                 .fontSize(14)
                 .fontColor(this.theme().mutedText)
                 .margin({ top: 8 })
