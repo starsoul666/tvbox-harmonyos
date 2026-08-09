@@ -9,3 +9,5 @@ local.properties
 *.har
 *.log
 .worktrees/
+
+build-profile.json5
