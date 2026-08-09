@@ -34,6 +34,11 @@ struct Settings {
   @State sources: SourceBean[] = [];
   @State homeApi: string = '';
   @State panel: string = '';
+  @State pickVisible: boolean = false;
+  @State pickTitle: string = '';
+  @State pickOptions: string[] = [];
+  @State pickSelected: number = 0;
+  private pickAction: (index: number) => void = () => {};
 
   @State debugOpen: boolean = false;
   @State homeShowSource: boolean = true;
@@ -65,6 +70,13 @@ struct Settings {
   @State homeMenuPosition: boolean = true;
   @State homeRecStyle: boolean = false;
   @State backupList: string[] = [];
+  private readonly pageBg = '#050505';
+  private readonly cardBg = 'rgba(52, 52, 52, 0.82)';
+  private readonly cardBgStrong = 'rgba(68, 68, 68, 0.82)';
+  private readonly textMain = '#ffffff';
+  private readonly textSoft = '#d7d7d7';
+  private readonly textMuted = '#a5a5a5';
+  private readonly accent = '#e02a2a';
 
   aboutToAppear(): void {
     this.initPage();
@@ -265,6 +277,19 @@ struct Settings {
     this.panel = this.panel === name ? '' : name;
   }
 
+  showPicker(title: string, options: string[], selected: number, apply: (index: number) => void): void {
+    this.pickTitle = title;
+    this.pickOptions = options;
+    this.pickSelected = selected >= 0 && selected < options.length ? selected : 0;
+    this.pickAction = apply;
+    this.pickVisible = true;
+  }
+
+  pickSelect(index: number): void {
+    this.pickAction(index);
+    this.pickVisible = false;
+  }
+
   homeNumLabel(): string {
     const index = this.homeNum >= 0 && this.homeNum < HomeNumValues.length ? this.homeNum : 0;
     return `${HomeNumValues[index]}条`;
@@ -276,124 +301,229 @@ struct Settings {
 
   @Builder
   sectionTitle(text: string) {
-    Text(text)
-      .fontSize(20)
-      .fontWeight(FontWeight.Bold)
-      .fontColor(this.theme().text)
-      .width('100%')
-      .margin({ top: 22, bottom: 8 })
+    Row() {
+      Row()
+        .width(6)
+        .height(24)
+        .backgroundColor(this.accent)
+        .borderRadius(3)
+      Text(text)
+        .fontSize(26)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(this.textMain)
+        .margin({ left: 12 })
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
+    .margin({ top: 24, bottom: 14 })
   }
 
   @Builder
-  switchRow(label: string, key: string, value: boolean, apply: (next: boolean) => void) {
+  cell(label: string, subLabel: string, value: string, isSwitch: boolean, swValue: boolean, panelName: string, onToggle: (next: boolean) => void, pickOptions: string[] = [], pickSelected: number = 0, onPick: (index: number) => void = () => {}) {
     Row() {
       Column() {
-        Text(label).fontSize(17).fontColor(this.theme().text)
-        Text(key).fontSize(12).fontColor(this.theme().subtleText).margin({ top: 3 })
+        Text(label)
+          .fontSize(18)
+          .fontColor(this.textMain)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (subLabel.length > 0) {
+          Text(subLabel)
+            .fontSize(12)
+            .fontColor(this.textMuted)
+            .margin({ top: 4 })
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
-      Text(value ? this.labels().enabled : this.labels().disabled)
-        .fontSize(15)
-        .fontColor(value ? this.theme().primarySoft : this.theme().mutedText)
-    }
-    .width('100%')
-    .padding(16)
-    .margin({ top: 8 })
-    .backgroundColor(this.theme().cardBg)
-    .borderRadius(12)
-    .focusable(true)
-    .onClick(() => apply(!value))
-  }
 
-  @Builder
-  optionRow(label: string, key: string, current: string, panelName: string) {
-    Row() {
-      Column() {
-        Text(label).fontSize(17).fontColor(this.theme().text)
-        Text(key).fontSize(12).fontColor(this.theme().subtleText).margin({ top: 3 })
+      if (isSwitch) {
+        Text(swValue ? this.labels().enabled : this.labels().disabled)
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(swValue ? '#ffffff' : this.textSoft)
+      } else {
+        Row() {
+          Text(value)
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.textSoft)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Text('>')
+            .fontSize(20)
+            .fontColor(this.textSoft)
+            .margin({ left: 8 })
+        }
+        .alignItems(VerticalAlign.Center)
       }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-      Text(current).fontSize(15).fontColor(this.theme().primarySoft)
     }
     .width('100%')
-    .padding(16)
-    .margin({ top: 8 })
-    .backgroundColor(this.panel === panelName ? this.theme().cardActiveBg : this.theme().cardBg)
+    .height(62)
+    .layoutWeight(1)
+    .padding({ left: 22, right: 22 })
+    .backgroundColor(this.panel === panelName ? this.cardBgStrong : this.cardBg)
     .borderRadius(12)
     .focusable(true)
-    .onClick(() => this.togglePanel(panelName))
+    .onClick(() => {
+      if (isSwitch) {
+        onToggle(!swValue);
+      } else {
+        this.showPicker(label, pickOptions, pickSelected, onPick);
+      }
+    })
   }
 
   @Builder
-  optionChips(options: string[], selected: number, apply: (index: number) => void) {
-    Flex({ wrap: FlexWrap.Wrap }) {
-      ForEach(options, (name: string, index: number) => {
-        Text(name)
-          .fontSize(14)
-          .fontColor(this.theme().text)
-          .padding({ left: 14, right: 14, top: 8, bottom: 8 })
-          .margin({ right: 8, top: 8 })
-          .backgroundColor(selected === index ? this.theme().primary : this.theme().panelBg)
-          .borderRadius(8)
-          .focusable(true)
-          .onClick(() => {
-            apply(index);
-            this.panel = '';
-          })
-      }, (name: string) => name)
+  renderPicker() {
+    Stack() {
+      Row()
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#90000000')
+        .onClick(() => this.pickVisible = false)
+
+      Column() {
+        Row() {
+          Row()
+            .width(6)
+            .height(22)
+            .backgroundColor(this.accent)
+            .borderRadius(3)
+          Text(this.pickTitle)
+            .fontSize(22)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.textMain)
+            .margin({ left: 10 })
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+        .padding({ bottom: 14 })
+
+        Scroll() {
+          Column() {
+            ForEach(this.pickOptions, (item: string, index: number) => {
+              Row() {
+                Text(item)
+                  .fontSize(16)
+                  .fontColor(index === this.pickSelected ? '#ffffff' : this.textMain)
+                  .layoutWeight(1)
+                if (index === this.pickSelected) {
+                  Text('✓')
+                    .fontSize(16)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor(this.accent)
+                }
+              }
+              .width('100%')
+              .height(46)
+              .padding({ left: 14, right: 14 })
+              .backgroundColor(index === this.pickSelected ? this.cardBgStrong : this.cardBg)
+              .borderRadius(10)
+              .margin({ bottom: 8 })
+              .focusable(true)
+              .onClick(() => this.pickSelect(index))
+            })
+          }
+          .width('100%')
+        }
+        .scrollable(ScrollDirection.Vertical)
+        .width('100%')
+        .layoutWeight(1)
+      }
+      .width(420)
+      .height(344)
+      .padding(22)
+      .backgroundColor('#1f1f1f')
+      .borderRadius(16)
     }
     .width('100%')
-    .padding({ left: 8, right: 8, bottom: 8 })
+    .height('100%')
   }
 
   build() {
-    Column() {
-      Row() {
-        Text('<')
-          .fontSize(28)
-          .fontColor(this.theme().text)
-          .width(56)
-          .textAlign(TextAlign.Center)
-          .focusable(true)
-          .onClick(() => router.back())
-        Text(this.labels().title)
-          .fontSize(28)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(this.theme().text)
+    Stack() {
+      Column() {
+        Row() {
+          Blank()
+            .width(56)
+          Row() {
+            Row()
+              .width(6)
+              .height(28)
+              .backgroundColor(this.accent)
+              .borderRadius(4)
+            Text(this.labels().title)
+              .fontSize(38)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(this.textMain)
+              .margin({ left: 12 })
+          }
+          .alignItems(VerticalAlign.Center)
           .layoutWeight(1)
-        Text(this.status)
-          .fontSize(14)
-          .fontColor(this.theme().mutedText)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Text(this.status)
+            .fontSize(14)
+            .fontColor(this.textSoft)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .width('100%')
+        .height(80)
+        .alignItems(VerticalAlign.Center)
       }
-      .height(72)
-      .padding({ left: 24, right: 40 })
+      .padding({ left: 48, right: 48, top: 20 })
 
       Scroll() {
         Column() {
-          this.sectionTitle(this.labels().config)
-
           Column() {
-            Text(this.labels().configUrl).fontSize(17).fontColor(this.theme().text).width('100%')
-            TextInput({ text: this.apiUrl, placeholder: this.labels().configPlaceholder })
-              .height(46)
-              .fontSize(15)
-              .margin({ top: 10 })
-              .onChange((value: string) => this.apiUrl = value)
+            Text(this.labels().configUrl)
+              .fontSize(20)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(this.textMain)
+              .width('100%')
             Row() {
-              Button(this.labels().loadConfig).height(40).onClick(() => this.loadConfig())
-              Button(this.labels().clearCache).height(40).margin({ left: 10 }).onClick(() => this.clearCache())
-              Button(`${this.labels().history} ${this.apiHistory.length}`)
-                .height(40)
-                .margin({ left: 10 })
-                .enabled(this.apiHistory.length > 0)
+              TextInput({ text: this.apiUrl, placeholder: this.labels().configPlaceholder })
+                .height(52)
+                .fontSize(16)
+                .backgroundColor(Color.Transparent)
+                .borderRadius(10)
+                .layoutWeight(1)
+                .onChange((value: string) => this.apiUrl = value)
+                .onSubmit(() => this.loadConfig())
+              Button(this.labels().history)
+                .width(62)
+                .height(52)
+                .margin({ left: 14 })
+                .backgroundColor(this.cardBgStrong)
+                .fontSize(16)
+                .fontColor(this.textMain)
                 .onClick(() => this.togglePanel('apiHistory'))
+            }
+            .width('100%')
+            .margin({ top: 12 })
+
+            Row() {
+              Button(this.labels().loadConfig)
+                .height(44)
+                .backgroundColor(this.accent)
+                .fontSize(16)
+                .fontColor(this.textMain)
+                .onClick(() => this.loadConfig())
+              Button(this.labels().clearCache)
+                .height(44)
+                .margin({ left: 12 })
+                .backgroundColor(this.cardBgStrong)
+                .fontSize(16)
+                .fontColor(this.textMain)
+                .onClick(() => this.clearCache())
               Button(`${this.labels().homeSource} ${this.sources.length}`)
-                .height(40)
-                .margin({ left: 10 })
+                .height(44)
+                .margin({ left: 12 })
+                .backgroundColor(this.cardBgStrong)
+                .fontSize(16)
+                .fontColor(this.textMain)
                 .enabled(this.sources.length > 0)
                 .onClick(() => this.togglePanel('homeSource'))
             }
@@ -403,254 +533,336 @@ struct Settings {
             if (this.panel === 'apiHistory') {
               Column() {
                 ForEach(this.apiHistory, (item: string) => {
-                  Text(item)
-                    .fontSize(13)
-                    .fontColor(item === this.apiUrl ? this.theme().primarySoft : this.theme().text)
-                    .width('100%')
-                    .padding({ top: 8, bottom: 8 })
-                    .maxLines(1)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
-                    .focusable(true)
-                    .onClick(() => {
-                      this.apiUrl = item;
-                      this.panel = '';
-                      this.loadConfig();
-                    })
+                  Row() {
+                    Text(item)
+                      .fontSize(13)
+                      .fontColor(item === this.apiUrl ? this.accent : this.textMain)
+                      .layoutWeight(1)
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  }
+                  .width('100%')
+                  .height(44)
+                  .padding({ left: 14, right: 14 })
+                  .backgroundColor(this.cardBg)
+                  .borderRadius(10)
+                  .margin({ bottom: 8 })
+                  .focusable(true)
+                  .onClick(() => {
+                    this.apiUrl = item;
+                    this.panel = '';
+                    this.loadConfig();
+                  })
                 }, (item: string) => item)
               }
               .width('100%')
-              .margin({ top: 8 })
+              .margin({ top: 10 })
             }
 
             if (this.panel === 'homeSource') {
               Column() {
                 ForEach(this.sources, (source: SourceBean) => {
                   Row() {
-                    Text(source.name).fontSize(14).fontColor(this.theme().text).layoutWeight(1)
-                    Text(`type=${source.type}`).fontSize(12).fontColor(this.theme().subtleText)
+                    Text(source.name)
+                      .fontSize(14)
+                      .fontColor(this.textMain)
+                      .layoutWeight(1)
+                    Text(`type=${source.type}`)
+                      .fontSize(12)
+                      .fontColor(this.textMuted)
                   }
                   .width('100%')
-                  .padding({ top: 9, bottom: 9 })
-                  .backgroundColor(source.key === this.homeApi ? this.theme().cardActiveBg : Color.Transparent)
+                  .height(42)
+                  .padding({ left: 14, right: 14 })
+                  .backgroundColor(source.key === this.homeApi ? this.cardBgStrong : this.cardBg)
+                  .borderRadius(10)
+                  .margin({ bottom: 8 })
                   .focusable(true)
                   .onClick(() => this.selectHomeSource(source))
                 }, (source: SourceBean) => source.key)
               }
               .width('100%')
-              .margin({ top: 8 })
+              .margin({ top: 10 })
             }
 
-            TextInput({ text: this.liveUrl, placeholder: this.labels().livePlaceholder })
-              .height(46)
-              .fontSize(15)
-              .margin({ top: 14 })
-              .onChange((value: string) => {
-                this.liveUrl = value;
-                this.putString(HawkConfig.LIVE_URL, value);
-              })
-            TextInput({ text: this.epgUrl, placeholder: this.labels().epgPlaceholder })
-              .height(46)
-              .fontSize(15)
-              .margin({ top: 10 })
-              .onChange((value: string) => {
-                this.epgUrl = value;
-                this.putString(HawkConfig.EPG_URL, value);
-              })
-            TextInput({ text: this.proxyServer, placeholder: this.labels().proxyPlaceholder })
-              .height(46)
-              .fontSize(15)
-              .margin({ top: 10 })
-              .onChange((value: string) => {
-                this.proxyServer = value;
-                this.putString(HawkConfig.PROXY_SERVER, value);
-              })
+            Row() {
+              TextInput({ text: this.liveUrl, placeholder: this.labels().livePlaceholder })
+                .height(52)
+                .fontSize(16)
+                .backgroundColor(Color.Transparent)
+                .borderRadius(10)
+                .layoutWeight(1)
+                .onChange((value: string) => {
+                  this.liveUrl = value;
+                  this.putString(HawkConfig.LIVE_URL, value);
+                })
+              TextInput({ text: this.epgUrl, placeholder: this.labels().epgPlaceholder })
+                .height(52)
+                .fontSize(16)
+                .backgroundColor(Color.Transparent)
+                .borderRadius(10)
+                .layoutWeight(1)
+                .margin({ left: 12 })
+                .onChange((value: string) => {
+                  this.epgUrl = value;
+                  this.putString(HawkConfig.EPG_URL, value);
+                })
+              TextInput({ text: this.proxyServer, placeholder: this.labels().proxyPlaceholder })
+                .height(52)
+                .fontSize(16)
+                .backgroundColor(Color.Transparent)
+                .borderRadius(10)
+                .layoutWeight(1)
+                .margin({ left: 12 })
+                .onChange((value: string) => {
+                  this.proxyServer = value;
+                  this.putString(HawkConfig.PROXY_SERVER, value);
+                })
+            }
+            .width('100%')
+            .margin({ top: 12 })
           }
           .width('100%')
           .padding(18)
-          .backgroundColor(this.theme().panelBg)
+          .backgroundColor(this.cardBg)
           .borderRadius(14)
 
           this.sectionTitle(this.labels().home)
-          this.switchRow(this.labels().sourceDisplay, HawkConfig.HOME_SHOW_SOURCE, this.homeShowSource, (next: boolean) => {
-            this.homeShowSource = next;
-            this.putBoolean(HawkConfig.HOME_SHOW_SOURCE, next);
-          })
-          this.switchRow(this.labels().launchLive, HawkConfig.HOME_DEFAULT_SHOW, this.homeDefaultShow, (next: boolean) => {
-            this.homeDefaultShow = next;
-            this.putBoolean(HawkConfig.HOME_DEFAULT_SHOW, next);
-          })
-          this.optionRow(this.labels().recommendation, HawkConfig.HOME_REC, this.optionLabel(HomeRecOptions, this.homeRec), 'homeRec')
-          if (this.panel === 'homeRec') {
-            this.optionChips(HomeRecOptions, this.homeRec, (index: number) => {
-              this.homeRec = index;
-              this.putNumber(HawkConfig.HOME_REC, index);
-            })
-          }
-          this.optionRow(this.labels().historyCount, HawkConfig.HOME_NUM, this.homeNumLabel(), 'homeNum')
-          if (this.panel === 'homeNum') {
-            this.optionChips(HomeNumValues.map((value: number) => `${value}条`), this.homeNum, (index: number) => {
-              this.homeNum = index;
-              this.putNumber(HawkConfig.HOME_NUM, index);
-            })
-          }
-          this.switchRow(this.labels().searchPosition, HawkConfig.HOME_SEARCH_POSITION, this.homeSearchPosition, (next: boolean) => {
-            this.homeSearchPosition = next;
-            this.putBoolean(HawkConfig.HOME_SEARCH_POSITION, next);
-          })
-          this.switchRow(this.labels().menuPosition, HawkConfig.HOME_MENU_POSITION, this.homeMenuPosition, (next: boolean) => {
-            this.homeMenuPosition = next;
-            this.putBoolean(HawkConfig.HOME_MENU_POSITION, next);
-          })
-          this.switchRow(this.labels().recStyle, HawkConfig.HOME_REC_STYLE, this.homeRecStyle, (next: boolean) => {
-            this.homeRecStyle = next;
-            this.putBoolean(HawkConfig.HOME_REC_STYLE, next);
-          })
 
-          this.sectionTitle(this.labels().player)
-          this.optionRow(this.labels().scale, HawkConfig.PLAY_SCALE, this.optionLabel(ScaleOptions, this.playScale), 'playScale')
-          if (this.panel === 'playScale') {
-            this.optionChips(ScaleOptions, this.playScale, (index: number) => {
-              this.playScale = index;
-              this.putNumber(HawkConfig.PLAY_SCALE, index);
-            })
-          }
-          this.optionRow(this.labels().playerType, HawkConfig.PLAY_TYPE, this.optionLabel(PlayerOptions, this.playType), 'playType')
-          if (this.panel === 'playType') {
-            Column() {
-              Text(this.labels().playerCompatNotice)
-                .fontSize(12)
-                .fontColor(this.theme().warningText)
-                .width('100%')
-                .padding({ left: 8, top: 6 })
-              this.optionChips(PlayerOptions, this.playType, (index: number) => {
-                this.playType = index;
-                this.putNumber(HawkConfig.PLAY_TYPE, index);
-              })
-            }
-            .width('100%')
-          }
-          this.optionRow(this.labels().renderMode, HawkConfig.PLAY_RENDER, this.optionLabel(RenderOptions, this.playRender), 'playRender')
-          if (this.panel === 'playRender') {
-            this.optionChips(RenderOptions, this.playRender, (index: number) => {
-              this.playRender = index;
-              this.putNumber(HawkConfig.PLAY_RENDER, index);
-            })
-          }
-          this.optionRow(this.labels().codec, HawkConfig.IJK_CODEC, this.ijkCodec, 'ijkCodec')
-          if (this.panel === 'ijkCodec') {
-            this.optionChips(IjkCodecOptions, IjkCodecOptions.indexOf(this.ijkCodec), (index: number) => {
-              this.ijkCodec = IjkCodecOptions[index];
-              this.putString(HawkConfig.IJK_CODEC, this.ijkCodec);
-            })
-          }
-          this.optionRow(this.labels().backgroundPlay, HawkConfig.BACKGROUND_PLAY_TYPE, this.optionLabel(BackgroundPlayOptions, this.backgroundPlay), 'bgPlay')
-          if (this.panel === 'bgPlay') {
-            this.optionChips(BackgroundPlayOptions, this.backgroundPlay, (index: number) => {
-              this.backgroundPlay = index;
-              this.putNumber(HawkConfig.BACKGROUND_PLAY_TYPE, index);
-            })
-          }
-          this.optionRow(this.labels().seekStep, HawkConfig.PLAY_TIME_STEP, `${this.playTimeStep}s`, 'timeStep')
-          if (this.panel === 'timeStep') {
-            this.optionChips(['5s', '10s', '15s', '30s'], [5, 10, 15, 30].indexOf(this.playTimeStep), (index: number) => {
-              this.playTimeStep = [5, 10, 15, 30][index];
-              this.putNumber(HawkConfig.PLAY_TIME_STEP, this.playTimeStep);
-            })
-          }
-          this.switchRow(this.labels().preview, HawkConfig.SHOW_PREVIEW, this.showPreview, (next: boolean) => {
-            this.showPreview = next;
-            this.putBoolean(HawkConfig.SHOW_PREVIEW, next);
-          })
-          this.switchRow(this.labels().purify, HawkConfig.VIDEO_PURIFY, this.videoPurify, (next: boolean) => {
-            this.videoPurify = next;
-            this.putBoolean(HawkConfig.VIDEO_PURIFY, next);
-          })
-
-          this.sectionTitle(this.labels().live)
-          this.switchRow(this.labels().reverseChannel, HawkConfig.LIVE_CHANNEL_REVERSE, this.liveChannelReverse, (next: boolean) => {
-            this.liveChannelReverse = next;
-            this.putBoolean(HawkConfig.LIVE_CHANNEL_REVERSE, next);
-          })
-          this.switchRow(this.labels().crossGroup, HawkConfig.LIVE_CROSS_GROUP, this.liveCrossGroup, (next: boolean) => {
-            this.liveCrossGroup = next;
-            this.putBoolean(HawkConfig.LIVE_CROSS_GROUP, next);
-          })
-          this.switchRow(this.labels().showTime, HawkConfig.LIVE_SHOW_TIME, this.liveShowTime, (next: boolean) => {
-            this.liveShowTime = next;
-            this.putBoolean(HawkConfig.LIVE_SHOW_TIME, next);
-          })
-          this.switchRow(this.labels().showNetSpeed, HawkConfig.LIVE_SHOW_NET_SPEED, this.liveShowNetSpeed, (next: boolean) => {
-            this.liveShowNetSpeed = next;
-            this.putBoolean(HawkConfig.LIVE_SHOW_NET_SPEED, next);
-          })
-          this.switchRow(this.labels().skipPassword, HawkConfig.LIVE_SKIP_PASSWORD, this.liveSkipPassword, (next: boolean) => {
-            this.liveSkipPassword = next;
-            this.putBoolean(HawkConfig.LIVE_SKIP_PASSWORD, next);
-          })
-          this.optionRow(this.labels().liveTimeout, HawkConfig.LIVE_CONNECT_TIMEOUT, this.optionLabel(LiveTimeoutOptions, this.liveConnectTimeout), 'liveTimeout')
-          if (this.panel === 'liveTimeout') {
-            this.optionChips(LiveTimeoutOptions, this.liveConnectTimeout, (index: number) => {
-              this.liveConnectTimeout = index;
-              this.putNumber(HawkConfig.LIVE_CONNECT_TIMEOUT, index);
-            })
-          }
-
-          this.sectionTitle(this.labels().system)
-          this.optionRow(this.labels().searchView, HawkConfig.SEARCH_VIEW, this.optionLabel(SearchViewOptions, this.searchView), 'searchView')
-          if (this.panel === 'searchView') {
-            this.optionChips(SearchViewOptions, this.searchView, (index: number) => {
-              this.searchView = index;
-              this.putNumber(HawkConfig.SEARCH_VIEW, index);
-            })
-          }
-          this.switchRow(this.labels().fastSearch, HawkConfig.FAST_SEARCH_MODE, this.fastSearchMode, (next: boolean) => {
-            this.fastSearchMode = next;
-            this.putBoolean(HawkConfig.FAST_SEARCH_MODE, next);
-          })
-          this.optionRow(this.labels().locale, HawkConfig.HOME_LOCALE, this.optionLabel(LocaleOptions, this.homeLocale), 'locale')
-          if (this.panel === 'locale') {
-            this.optionChips(LocaleOptions, this.homeLocale, (index: number) => {
-              this.homeLocale = index;
-              appearanceService.setLocale(index);
-              this.putNumber(HawkConfig.HOME_LOCALE, index);
-            })
-          }
-          this.optionRow(this.labels().theme, HawkConfig.THEME_SELECT, this.optionLabel(ThemeOptions, this.themeSelect), 'theme')
-          if (this.panel === 'theme') {
-            this.optionChips(ThemeOptions, this.themeSelect, (index: number) => {
-              this.themeSelect = index;
-              appearanceService.setTheme(index);
-              this.putNumber(HawkConfig.THEME_SELECT, index);
-            })
-          }
-          this.optionRow(this.labels().dns, HawkConfig.DOH_URL, this.optionLabel(DnsOptions, this.dohUrl), 'dns')
-          if (this.panel === 'dns') {
-            this.optionChips(DnsOptions, this.dohUrl, (index: number) => {
-              this.dohUrl = index;
-              this.putNumber(HawkConfig.DOH_URL, index);
-            })
-          }
-          this.switchRow(this.labels().sniffWebView, HawkConfig.PARSE_WEBVIEW, this.parseWebView, (next: boolean) => {
-            this.parseWebView = next;
-            this.putBoolean(HawkConfig.PARSE_WEBVIEW, next);
-          })
-          this.switchRow(this.labels().debug, HawkConfig.DEBUG_OPEN, this.debugOpen, (next: boolean) => {
-            this.debugOpen = next;
-            this.putBoolean(HawkConfig.DEBUG_OPEN, next);
-          })
-
-          this.sectionTitle(this.labels().data)
           Row() {
-            Button(this.labels().clearWatchHistory).height(40).onClick(() => this.clearHistoryRecords())
-            Button(this.labels().clearSearchHistory).height(40).margin({ left: 10 }).onClick(() => this.clearSearchRecords())
+            this.cell(this.labels().sourceDisplay, '', '', true, this.homeShowSource, '', (next: boolean) => {
+              this.homeShowSource = next;
+              this.putBoolean(HawkConfig.HOME_SHOW_SOURCE, next);
+            })
+            this.cell(this.labels().launchLive, '', '', true, this.homeDefaultShow, '', (next: boolean) => {
+              this.homeDefaultShow = next;
+              this.putBoolean(HawkConfig.HOME_DEFAULT_SHOW, next);
+            })
           }
           .width('100%')
           .margin({ top: 8 })
 
           Row() {
-            Button(this.labels().backup).height(40).onClick(() => this.createBackup())
-            Button(this.labels().restore).height(40).margin({ left: 10 }).onClick(() => this.togglePanel('backupList'))
-            Button(this.labels().resetApp).height(40).margin({ left: 10 }).onClick(() => this.resetApp())
+            this.cell(this.labels().recommendation, '', this.optionLabel(HomeRecOptions, this.homeRec), false, false, 'homeRec', (next: boolean) => { }, HomeRecOptions, this.homeRec, (index: number) => {
+              this.homeRec = index;
+              this.putNumber(HawkConfig.HOME_REC, index);
+            })
+            this.cell(this.labels().historyCount, '', this.homeNumLabel(), false, false, 'homeNum', (next: boolean) => { }, HomeNumValues.map((value: number) => `${value}条`), this.homeNum, (index: number) => {
+              this.homeNum = index;
+              this.putNumber(HawkConfig.HOME_NUM, index);
+            })
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          Row() {
+            this.cell(this.labels().searchPosition, '', '', true, this.homeSearchPosition, '', (next: boolean) => {
+              this.homeSearchPosition = next;
+              this.putBoolean(HawkConfig.HOME_SEARCH_POSITION, next);
+            })
+            this.cell(this.labels().menuPosition, '', '', true, this.homeMenuPosition, '', (next: boolean) => {
+              this.homeMenuPosition = next;
+              this.putBoolean(HawkConfig.HOME_MENU_POSITION, next);
+            })
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          Row() {
+            this.cell(this.labels().recStyle, '', '', true, this.homeRecStyle, '', (next: boolean) => {
+              this.homeRecStyle = next;
+              this.putBoolean(HawkConfig.HOME_REC_STYLE, next);
+            })
+            Blank()
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          this.sectionTitle(this.labels().player)
+          Row() {
+            this.cell(this.labels().scale, '', this.optionLabel(ScaleOptions, this.playScale), false, false, 'playScale', (next: boolean) => { }, ScaleOptions, this.playScale, (index: number) => {
+              this.playScale = index;
+              this.putNumber(HawkConfig.PLAY_SCALE, index);
+            })
+            this.cell(this.labels().playerType, '', this.optionLabel(PlayerOptions, this.playType), false, false, 'playType', (next: boolean) => { }, PlayerOptions, this.playType, (index: number) => {
+              this.playType = index;
+              this.putNumber(HawkConfig.PLAY_TYPE, index);
+            })
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          Row() {
+            this.cell(this.labels().renderMode, '', this.optionLabel(RenderOptions, this.playRender), false, false, 'playRender', (next: boolean) => { }, RenderOptions, this.playRender, (index: number) => {
+              this.playRender = index;
+              this.putNumber(HawkConfig.PLAY_RENDER, index);
+            })
+            this.cell(this.labels().codec, '', this.ijkCodec, false, false, 'ijkCodec', (next: boolean) => { }, IjkCodecOptions, IjkCodecOptions.indexOf(this.ijkCodec), (index: number) => {
+              this.ijkCodec = IjkCodecOptions[index];
+              this.putString(HawkConfig.IJK_CODEC, this.ijkCodec);
+            })
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          Row() {
+            this.cell(this.labels().backgroundPlay, '', this.optionLabel(BackgroundPlayOptions, this.backgroundPlay), false, false, 'bgPlay', (next: boolean) => { }, BackgroundPlayOptions, this.backgroundPlay, (index: number) => {
+              this.backgroundPlay = index;
+              this.putNumber(HawkConfig.BACKGROUND_PLAY_TYPE, index);
+            })
+            this.cell(this.labels().seekStep, '', `${this.playTimeStep}s`, false, false, 'timeStep', (next: boolean) => { }, ['5s', '10s', '15s', '30s'], [5, 10, 15, 30].indexOf(this.playTimeStep), (index: number) => {
+              this.playTimeStep = [5, 10, 15, 30][index];
+              this.putNumber(HawkConfig.PLAY_TIME_STEP, this.playTimeStep);
+            })
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          Row() {
+            this.cell(this.labels().preview, '', '', true, this.showPreview, '', (next: boolean) => {
+              this.showPreview = next;
+              this.putBoolean(HawkConfig.SHOW_PREVIEW, next);
+            })
+            this.cell(this.labels().purify, '', '', true, this.videoPurify, '', (next: boolean) => {
+              this.videoPurify = next;
+              this.putBoolean(HawkConfig.VIDEO_PURIFY, next);
+            })
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          this.sectionTitle(this.labels().live)
+          Row() {
+            this.cell(this.labels().reverseChannel, '', '', true, this.liveChannelReverse, '', (next: boolean) => {
+              this.liveChannelReverse = next;
+              this.putBoolean(HawkConfig.LIVE_CHANNEL_REVERSE, next);
+            })
+            this.cell(this.labels().crossGroup, '', '', true, this.liveCrossGroup, '', (next: boolean) => {
+              this.liveCrossGroup = next;
+              this.putBoolean(HawkConfig.LIVE_CROSS_GROUP, next);
+            })
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          Row() {
+            this.cell(this.labels().showTime, '', '', true, this.liveShowTime, '', (next: boolean) => {
+              this.liveShowTime = next;
+              this.putBoolean(HawkConfig.LIVE_SHOW_TIME, next);
+            })
+            this.cell(this.labels().showNetSpeed, '', '', true, this.liveShowNetSpeed, '', (next: boolean) => {
+              this.liveShowNetSpeed = next;
+              this.putBoolean(HawkConfig.LIVE_SHOW_NET_SPEED, next);
+            })
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          Row() {
+            this.cell(this.labels().skipPassword, '', '', true, this.liveSkipPassword, '', (next: boolean) => {
+              this.liveSkipPassword = next;
+              this.putBoolean(HawkConfig.LIVE_SKIP_PASSWORD, next);
+            })
+            this.cell(this.labels().liveTimeout, '', this.optionLabel(LiveTimeoutOptions, this.liveConnectTimeout), false, false, 'liveTimeout', (next: boolean) => { }, LiveTimeoutOptions, this.liveConnectTimeout, (index: number) => {
+              this.liveConnectTimeout = index;
+              this.putNumber(HawkConfig.LIVE_CONNECT_TIMEOUT, index);
+            })
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          this.sectionTitle(this.labels().system)
+          Row() {
+            this.cell(this.labels().searchView, '', this.optionLabel(SearchViewOptions, this.searchView), false, false, 'searchView', (next: boolean) => { }, SearchViewOptions, this.searchView, (index: number) => {
+              this.searchView = index;
+              this.putNumber(HawkConfig.SEARCH_VIEW, index);
+            })
+            this.cell(this.labels().fastSearch, '', '', true, this.fastSearchMode, '', (next: boolean) => {
+              this.fastSearchMode = next;
+              this.putBoolean(HawkConfig.FAST_SEARCH_MODE, next);
+            })
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          Row() {
+            this.cell(this.labels().locale, '', this.optionLabel(LocaleOptions, this.homeLocale), false, false, 'locale', (next: boolean) => { }, LocaleOptions, this.homeLocale, (index: number) => {
+              this.homeLocale = index;
+              appearanceService.setLocale(index);
+              this.putNumber(HawkConfig.HOME_LOCALE, index);
+            })
+            this.cell(this.labels().theme, '', this.optionLabel(ThemeOptions, this.themeSelect), false, false, 'theme', (next: boolean) => { }, ThemeOptions, this.themeSelect, (index: number) => {
+              this.themeSelect = index;
+              appearanceService.setTheme(index);
+              this.putNumber(HawkConfig.THEME_SELECT, index);
+            })
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          Row() {
+            this.cell(this.labels().dns, '', this.optionLabel(DnsOptions, this.dohUrl), false, false, 'dns', (next: boolean) => { }, DnsOptions, this.dohUrl, (index: number) => {
+              this.dohUrl = index;
+              this.putNumber(HawkConfig.DOH_URL, index);
+            })
+            this.cell(this.labels().sniffWebView, '', '', true, this.parseWebView, '', (next: boolean) => {
+              this.parseWebView = next;
+              this.putBoolean(HawkConfig.PARSE_WEBVIEW, next);
+            })
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          Row() {
+            this.cell(this.labels().debug, '', '', true, this.debugOpen, '', (next: boolean) => {
+              this.debugOpen = next;
+              this.putBoolean(HawkConfig.DEBUG_OPEN, next);
+            })
+            Blank()
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          this.sectionTitle(this.labels().data)
+          Row() {
+            Button(this.labels().clearWatchHistory)
+              .height(42)
+              .backgroundColor(this.cardBgStrong)
+              .fontSize(16)
+              .fontColor(this.textMain)
+              .onClick(() => this.clearHistoryRecords())
+            Button(this.labels().clearSearchHistory)
+              .height(42)
+              .margin({ left: 12 })
+              .backgroundColor(this.cardBgStrong)
+              .fontSize(16)
+              .fontColor(this.textMain)
+              .onClick(() => this.clearSearchRecords())
+          }
+          .width('100%')
+          .margin({ top: 8 })
+
+          Row() {
+            Button(this.labels().backup)
+              .height(42)
+              .backgroundColor(this.cardBgStrong)
+              .fontSize(16)
+              .fontColor(this.textMain)
+              .onClick(() => this.createBackup())
+            Button(this.labels().restore)
+              .height(42)
+              .margin({ left: 12 })
+              .backgroundColor(this.cardBgStrong)
+              .fontSize(16)
+              .fontColor(this.textMain)
+              .onClick(() => this.togglePanel('backupList'))
+            Button(this.labels().resetApp)
+              .height(42)
+              .margin({ left: 12 })
+              .backgroundColor(this.accent)
+              .fontSize(16)
+              .fontColor(this.textMain)
+              .onClick(() => this.resetApp())
           }
           .width('100%')
           .margin({ top: 8 })
@@ -660,19 +872,30 @@ struct Settings {
               if (this.backupList.length === 0) {
                 Text(this.labels().noBackup)
                   .fontSize(14)
-                  .fontColor(this.theme().mutedText)
+                  .fontColor(this.textMuted)
                   .padding({ top: 8, bottom: 8 })
               } else {
                 ForEach(this.backupList, (item: string) => {
                   Row() {
                     Text(item)
                       .fontSize(13)
-                      .fontColor(this.theme().text)
+                      .fontColor(this.textMain)
                       .layoutWeight(1)
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis })
-                    Button(this.labels().restore).height(32).fontSize(12).margin({ right: 8 }).onClick(() => this.restoreBackup(item))
-                    Button('删除').height(32).fontSize(12).onClick(() => this.deleteBackupEntry(item))
+                    Button(this.labels().restore)
+                      .height(32)
+                      .fontSize(12)
+                      .margin({ right: 8 })
+                      .backgroundColor(this.cardBgStrong)
+                      .fontColor(this.textMain)
+                      .onClick(() => this.restoreBackup(item))
+                    Button('删除')
+                      .height(32)
+                      .fontSize(12)
+                      .backgroundColor(this.accent)
+                      .fontColor(this.textMain)
+                      .onClick(() => this.deleteBackupEntry(item))
                   }
                   .width('100%')
                   .padding({ top: 6, bottom: 6 })
@@ -688,9 +911,13 @@ struct Settings {
       }
       .padding({ left: 48, right: 48 })
       .layoutWeight(1)
+
+      if (this.pickVisible) {
+        this.renderPicker()
+      }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(this.theme().pageBg)
+    .backgroundColor(this.pageBg)
   }
 }

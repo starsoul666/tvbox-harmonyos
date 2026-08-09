@@ -45,6 +45,22 @@ struct Home {
     { title: 'apps', page: 'pages/Apps', desc: 'AppsActivity' },
     { title: 'settings', page: 'pages/Settings', desc: 'SettingActivity' }
   ];
+  private readonly homeBg = '#050505';
+  private readonly homeCardBg = '#2f2f2f';
+  private readonly homeCardBgSoft = 'rgba(47, 47, 47, 0.92)';
+  private readonly homeText = '#ffffff';
+  private readonly homeTextSoft = '#b9b9b9';
+  private readonly homeAccent = '#e02a2a';
+  private readonly homeBottomBg = '#f6f6f6';
+  private readonly homeBottomHandle = '#e2e2e2';
+  private readonly homeMenuLabels: string[] = ['首页', '我的豆瓣', '热门电影', '热播剧集', '热播综艺', '电影筛选', '电视筛选', '电影排行'];
+  private readonly homeActions: Array<{ title: string; icon: string; page: string }> = [
+    { title: '历史', icon: '↻', page: 'pages/History' },
+    { title: '直播', icon: '▶', page: 'pages/Live' },
+    { title: '收藏', icon: '★', page: 'pages/Favorites' },
+    { title: '推送', icon: '⚡', page: 'pages/Push' },
+    { title: '文件', icon: '▣', page: 'pages/Drive' }
+  ];
 
   aboutToAppear(): void {
     this.initPage();
@@ -228,244 +244,169 @@ struct Home {
     });
   }
 
+  private openQuick(page: string): void {
+    this.open(page);
+  }
+
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor(this.homeBg)
+
       if (this.wallpaperUrl.length > 0) {
         Image(this.wallpaperUrl)
           .width('100%')
           .height('100%')
           .objectFit(ImageFit.Cover)
-          .opacity(0.15)
+          .opacity(0.08)
       }
+
+      Row()
+        .width(760)
+        .height(760)
+        .borderRadius(380)
+        .border({ width: 18, color: 'rgba(255, 255, 255, 0.04)' })
+        .backgroundColor('rgba(255, 255, 255, 0.02)')
+        .position({ x: 1080, y: -220 })
+
+      Row()
+        .width(560)
+        .height(560)
+        .borderRadius(280)
+        .border({ width: 12, color: 'rgba(255, 255, 255, 0.05)' })
+        .backgroundColor('rgba(255, 255, 255, 0.015)')
+        .position({ x: 1280, y: -120 })
+
+      Row()
+        .width(350)
+        .height(350)
+        .borderRadius(175)
+        .border({ width: 10, color: 'rgba(255, 255, 255, 0.07)' })
+        .backgroundColor('rgba(255, 255, 255, 0.02)')
+        .position({ x: 1570, y: 50 })
 
       Column() {
         Row() {
-          Column() {
-            Text('TVBox')
-              .fontSize(34)
+          Row()
+            .width(6)
+            .height(56)
+            .backgroundColor(this.homeAccent)
+            .borderRadius(4)
+
+          Row() {
+            Text('🐰')
+              .fontSize(42)
+              .fontColor(this.homeText)
+              .margin({ right: 6 })
+            Text('蔡home')
+              .fontSize(40)
               .fontWeight(FontWeight.Bold)
-              .fontColor(this.theme().text)
-            Text(this.statusText)
-              .fontSize(16)
-              .fontColor(this.theme().mutedText)
-              .margin({ top: 8 })
+              .fontColor(this.homeText)
           }
-          .alignItems(HorizontalAlign.Start)
+          .alignItems(VerticalAlign.Center)
+          .margin({ left: 18 })
+
+          Row() {
+            ForEach(this.homeActions, (action: { title: string; icon: string; page: string }) => {
+              Column() {
+                Text(action.icon)
+                  .fontSize(34)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(this.homeText)
+                  .textAlign(TextAlign.Center)
+                  .width(44)
+                Text(action.title)
+                  .fontSize(12)
+                  .fontColor(this.homeTextSoft)
+                  .margin({ top: 2 })
+              }
+              .width(68)
+              .alignItems(HorizontalAlign.Center)
+              .margin({ left: 26 })
+              .focusable(true)
+              .onClick(() => this.openQuick(action.page))
+            }, (action: { title: string; icon: string; page: string }) => action.title)
+
+            Text('08月08日, 周六 18:51')
+              .fontSize(24)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(this.homeText)
+              .margin({ left: 30 })
+          }
+          .alignItems(VerticalAlign.Center)
           .layoutWeight(1)
-
-          if (this.topEntries().length > 0) {
-            Row() {
-              ForEach(this.topEntries(), (entry: HomeEntry) => {
-                Text(this.entryTitle(entry.title))
-                  .fontSize(15)
-                  .fontColor(this.theme().text)
-                  .padding({ left: 16, right: 16, top: 8, bottom: 8 })
-                  .margin({ left: 8 })
-                  .backgroundColor(this.theme().panelBg)
-                  .borderRadius(16)
-                  .focusable(true)
-                  .onClick(() => this.open(entry.page))
-              }, (entry: HomeEntry) => entry.title)
-            }
-            .alignItems(VerticalAlign.Center)
-          }
-
-          Column() {
-            Text(this.labels().currentSource)
-              .fontSize(14)
-              .fontColor(this.theme().mutedText)
-            Text(this.sourceName)
-              .fontSize(18)
-              .fontColor(this.theme().text)
-              .fontWeight(FontWeight.Medium)
-              .margin({ top: 4 })
-          }
-          .alignItems(HorizontalAlign.End)
-          .margin({ left: 16 })
+          .justifyContent(FlexAlign.End)
         }
         .width('100%')
-        .padding({ left: 48, right: 48, top: 32, bottom: 24 })
+        .padding({ left: 48, right: 48, top: 22, bottom: 0 })
 
-        Grid() {
-          ForEach(this.gridEntries(), (entry: HomeEntry) => {
-            GridItem() {
-              Column() {
-                Text(this.entryTitle(entry.title))
-                  .fontSize(24)
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor(this.theme().text)
-                Text(entry.desc)
-                  .fontSize(13)
-                  .fontColor(this.theme().mutedText)
-                  .margin({ top: 10 })
-              }
-              .width('100%')
-              .height('100%')
-              .justifyContent(FlexAlign.Center)
-              .alignItems(HorizontalAlign.Center)
-              .borderRadius(18)
-              .backgroundColor(this.theme().panelBg)
-              .focusable(true)
-              .onClick(() => this.open(entry.page))
-            }
-          }, (entry: HomeEntry) => entry.title)
-        }
-        .columnsTemplate('1fr 1fr 1fr')
-        .rowsGap(18)
-        .columnsGap(18)
-        .padding({ left: 48, right: 48 })
-
-        if (this.sources.length > 0 && this.showSource) {
-          Column() {
-            if (this.contentStatus.length > 0) {
-              Row() {
-                Text(this.labels().homeContent)
-                  .fontSize(22)
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor(this.theme().text)
-                Text(this.contentLoading ? this.labels().loading : this.contentStatus)
-                  .fontSize(14)
-                  .fontColor(this.theme().mutedText)
-                  .margin({ left: 12 })
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-              }
-              .width('100%')
-              .alignItems(VerticalAlign.Center)
-            }
-
-            if (this.categories.length > 0) {
-              Scroll() {
-                Row() {
-                  ForEach(this.categories, (category: MovieSort) => {
-                    Text(category.sortName)
-                      .fontSize(15)
-                      .fontColor(this.theme().text)
-                      .padding({ left: 14, right: 14, top: 8, bottom: 8 })
-                      .margin({ right: 10 })
-                      .backgroundColor(this.theme().panelBg)
-                      .borderRadius(16)
-                      .focusable(true)
-                      .onClick(() => this.openCategory(category))
-                  }, (category: MovieSort) => category.sortId)
-                }
-              }
-              .scrollable(ScrollDirection.Horizontal)
-              .width('100%')
-              .margin({ top: 12 })
-            }
-
-            if (this.recommendations.length > 0) {
-              if (this.homeRecStyle) {
-                Grid() {
-                  ForEach(this.recommendations.slice(0, 8), (vod: VodInfo) => {
-                    GridItem() {
-                      Column() {
-                        Text(vod.name)
-                          .fontSize(14)
-                          .fontColor(this.theme().text)
-                          .maxLines(2)
-                          .textOverflow({ overflow: TextOverflow.Ellipsis })
-                        Text(vod.note === undefined ? '' : vod.note)
-                          .fontSize(11)
-                          .fontColor(this.theme().mutedText)
-                          .margin({ top: 4 })
-                          .maxLines(1)
-                          .textOverflow({ overflow: TextOverflow.Ellipsis })
-                      }
-                      .width('100%')
-                      .height('100%')
-                      .padding(8)
-                      .backgroundColor(this.theme().fieldBg)
-                      .borderRadius(10)
-                      .onClick(() => this.openVod(vod))
-                    }
-                  }, (vod: VodInfo) => `${vod.sourceKey || ''}:${vod.id}`)
-                }
-                .columnsTemplate('1fr 1fr 1fr 1fr')
-                .rowsGap(8)
-                .columnsGap(8)
-                .height(150)
-                .margin({ top: 10 })
-              } else {
-                List() {
-                  ForEach(this.recommendations.slice(0, 8), (vod: VodInfo) => {
-                    ListItem() {
-                      Row() {
-                        Text(vod.name)
-                          .fontSize(16)
-                          .fontColor(this.theme().text)
-                          .layoutWeight(1)
-                          .maxLines(1)
-                          .textOverflow({ overflow: TextOverflow.Ellipsis })
-                        Text(vod.note === undefined ? '' : vod.note)
-                          .fontSize(12)
-                          .fontColor(this.theme().mutedText)
-                          .width(160)
-                          .maxLines(1)
-                          .textOverflow({ overflow: TextOverflow.Ellipsis })
-                      }
-                      .padding({ left: 14, right: 14, top: 10, bottom: 10 })
-                      .backgroundColor(this.theme().fieldBg)
-                      .borderRadius(10)
-                      .onClick(() => this.openVod(vod))
-                    }.margin({ top: 8 })
-                  }, (vod: VodInfo) => `${vod.sourceKey || ''}:${vod.id}`)
-                }
-                .height(150)
-                .margin({ top: 10 })
-              }
-            }
-
-            Row() {
-              Text(this.labels().dataSources)
-                .fontSize(22)
-                .fontWeight(FontWeight.Bold)
-                .fontColor(this.theme().text)
-              Text(`${this.sources.length}${this.labels().visibleSourceSuffix}`)
-                .fontSize(14)
-                .fontColor(this.theme().mutedText)
-                .margin({ left: 12 })
-            }
-            .width('100%')
-            .alignItems(VerticalAlign.Center)
-            .margin({ top: 18 })
-
-            List() {
-              ForEach(this.sources, (source: SourceBean) => {
-                ListItem() {
-                  Row() {
-                    Text(source.name)
-                      .fontSize(17)
-                      .fontColor(this.theme().text)
-                      .layoutWeight(1)
-                    Text(source.api)
-                      .fontSize(12)
-                      .fontColor(this.theme().mutedText)
-                      .maxLines(1)
-                      .textOverflow({ overflow: TextOverflow.Ellipsis })
-                      .width('50%')
-                  }
-                  .padding({ left: 16, right: 16, top: 12, bottom: 12 })
-                  .backgroundColor(source.key === apiConfigService.state.homeSource?.key ? this.theme().cardActiveBg : this.theme().cardBg)
-                  .borderRadius(12)
-                  .focusable(true)
-                  .onClick(() => {
-                    this.selectHomeSource(source);
-                  })
-                }
-              })
-            }
-            .height(170)
-            .margin({ top: 12 })
+        Scroll() {
+          Row() {
+            ForEach(this.homeMenuLabels, (title: string, index: number) => {
+              Text(title)
+                .fontSize(index === 0 ? 36 : 30)
+                .fontWeight(index === 0 ? FontWeight.Medium : FontWeight.Regular)
+                .fontColor(index === 0 ? this.homeText : this.homeTextSoft)
+                .margin({ right: 72 })
+                .focusable(true)
+            }, (title: string) => title)
           }
-          .padding({ left: 48, right: 48, top: 24, bottom: 40 })
-          .layoutWeight(1)
-        } else {
-          Blank()
-            .layoutWeight(1)
+          .alignItems(VerticalAlign.Center)
+          .padding({ left: 4, right: 4 })
         }
+        .scrollable(ScrollDirection.Horizontal)
+        .width('100%')
+        .height(74)
+        .margin({ left: 48, right: 48, top: 8 })
+
+        Row() {
+          ForEach(this.homeActions, (action: { title: string; icon: string; page: string }) => {
+            Row() {
+              Text(action.icon)
+                .fontSize(30)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(this.homeText)
+                .width(40)
+                .textAlign(TextAlign.Center)
+              Text(action.title)
+                .fontSize(28)
+                .fontWeight(FontWeight.Bold)
+                .fontColor(this.homeText)
+                .margin({ left: 18 })
+            }
+            .width(210)
+            .height(148)
+            .padding({ left: 24, right: 20 })
+            .backgroundColor(this.homeCardBgSoft)
+            .borderRadius(20)
+            .alignItems(VerticalAlign.Center)
+            .focusable(true)
+            .onClick(() => this.openQuick(action.page))
+            .margin({ right: 14 })
+          }, (action: { title: string; icon: string; page: string }) => action.title)
+        }
+        .alignItems(VerticalAlign.Center)
+        .margin({ left: 48, top: 28 })
+
+        Blank()
+          .layoutWeight(1)
+
+        Row() {
+          Blank().layoutWeight(1)
+          Row()
+            .width(520)
+            .height(10)
+            .backgroundColor(this.homeBottomHandle)
+            .borderRadius(5)
+          Blank().layoutWeight(1)
+        }
+        .width('100%')
+        .height(40)
+        .backgroundColor(this.homeBottomBg)
+        .alignItems(VerticalAlign.Center)
       }
       .width('100%')
       .height('100%')
